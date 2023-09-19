@@ -1,13 +1,16 @@
 """
-This module reproduces the findings of our paper, *The Many Voices of Du Ying:
-Revisiting the Disputed Writings of Lu Xun and Zhou Zuoren*. Specifically, it outputs
-the validation accuracy, predictions of authorship for the four disputed essays
-between Lu Xun and Zhou Zuoren, feature weights, and the relative frequency per
-thousand characters for each author.
+This module reproduces the findings of our paper, *Four Hands Playing in Unison: A Study
+on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'*.
+Specifically, it outputs predictions of authorship for the text of 'The Strings of
+Melancholy' (哀弦篇) as a whole and for each of its six sections. It also provides
+feature weights and the relative frequency per thousand characters for each author.
+
+The code is mostly inherited from our previous repository
+https://codeberg.org/haining/the_many_voices.
 """
 
 __author__ = "hw56@indiana.edu"
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 __license__ = "0BSD"
 
 import numpy as np
@@ -21,12 +24,14 @@ from utils import load_corpus, count_frequency, highlight_document
 
 print("*" * 99)
 print(
-    "Reproducing the findings of The Many Voices of Du Ying: Revisiting the Disputed "
-    "Writings of Lu Xun and Zhou Zuoren"
+    """Reproducing the findings of Four Hands Playing in Unison: A Study
+on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'"""
 )
 
 # load data
 train, val, test = load_corpus()
+# sort test samples based on the title field
+test.sort(key=lambda d: d['title'])
 # specify 31 features derived from recursive feature elimination
 # including 4 bigrams and 27 unigrams
 # fmt: off
