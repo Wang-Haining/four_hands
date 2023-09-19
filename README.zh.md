@@ -1,24 +1,13 @@
-# 独应不独
+# 四手联弹
 
-[![en](https://img.shields.io/badge/lang-en-green.svg)](https://codeberg.org/haining/the_many_voices/src/branch/main/README.md)
-[![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://codeberg.org/haining/the_many_voices/src/branch/main/README.zh.md)
+[![en](https://img.shields.io/badge/lang-en-green.svg)](https://codeberg.org/hainingwang/four_hands/src/branch/main/README.md)
+[![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://codeberg.org/hainingwang/four_hands/src/branch/main/README.zh.md)
 
-此仓库存储了复现《独应不独：重新审视有争议的鲁迅和周作人的著作》所需的语料和脚本。
+此仓库包含用于复现《四手联弹：周作人与鲁迅在<哀弦篇>中的合作》研究发现的语料库和脚本。
 
+我们发现了证据支持《哀弦篇》，传统上被归功于周作人的独立作品，不太可能由周作人独自完成。请参考我们的[论文](#citation)以获取详细信息。
 
-我们发现《望华国篇》（下图）是由鲁迅所写，而非周作人，这只是我们的发现之一。请参考我们的[论文](#citation)以获取详细信息。
-
-<img src="assets/whgp_printed.png" width="70%">
-
-## 教程
-
-我们提供了Colab笔记本以复现结果：
-- [主实验](https://colab.research.google.com/drive/1gYdugVvy_4R2IU3J1oASK5BgV3EiB9Gb?usp=sharing)，包括特征工程，构建分类器，
-以及解释和可视化文章的发现。
-- [特征选择](https://colab.research.google.com/drive/1ryNXKcRrnvPEs61udXisuaHi2bEMbCWQ?usp=sharing)，涉及到选择最有效且简洁的
-用于区分作者身份的特征集，并检查特征的相关性。
-
-请注意，这些笔记本主要是为了教学目的。请查看[复现](#reproduction)中的严谨复现方法。
+<img src="assets/axp.jpg" width="25%">
 
 ## 复现
 
@@ -31,36 +20,34 @@ python -m run
 
 ## 语料库
 
-| 划分 | 标题                                                                           | 作者/笔名  |
-|----|-------------------------------------------------------------------------------|--------|
-| 训练 | 科学史教篇                                                                        | 鲁迅     |
-|    | 文化偏至论                                                                        | 鲁迅     |
-|    | 《匈奴奇士录》序                                                                     | 周作人    |
-|    | 《炭画》序                                                                        | 周作人    |
-|    | 《红星佚史》序                                                                      | 周作人    |
-|    | 《黄蔷薇》序                                                                       | 周作人    |
-|    | 童话略论                                                                         | 周作人    |
-|    | 童话研究                                                                         | 周作人    |
-| 验证 | 说鈤                                                                             | 鲁迅     |
-|    | 摩罗诗力说                                                                        | 鲁迅     |
-|    | 《秋草园日记》序                                                                     | 周作人    |
-|    | 乙巳日记附记一则                                                                     | 周作人    |
-|    | 江南考先生之一斑                                                                     | 周作人    |
-|    | 汽船之窘况及苦热                                                                     | 周作人    |
-|    | 望越篇                                                                          | 周作人和鲁迅 |
-| 测试 | 望华国篇                                                                         | 独应     |
-|    | 尔越人毋忘先民之训                                                                    | 独      |
-|    | 民国之征何在                                                                       | 独      |
+| 划分 | 标题        | 作者/笔名  |
+|----|-----------|--------|
+| 训练 | 科学史教篇     | 鲁迅     |
+|    | 文化偏至论     | 鲁迅     |
+|    | 《匈奴奇士录》序  | 周作人    |
+|    | 《炭画》序     | 周作人    |
+|    | 《红星佚史》序   | 周作人    |
+|    | 《黄蔷薇》序    | 周作人    |
+|    | 童话略论      | 周作人    |
+|    | 童话研究      | 周作人    |
+| 验证 | 说鈤        | 鲁迅     |
+|    | 摩罗诗力说     | 鲁迅     |
+|    | 《秋草园日记》序  | 周作人    |
+|    | 乙巳日记附记一则  | 周作人    |
+|    | 江南考先生之一斑  | 周作人    |
+|    | 汽船之窘况及苦热  | 周作人    |
+|    | 望越篇       | 周作人和鲁迅 |
+| 测试 | 哀弦篇       | 独应     |
 
 ## Visualization
 
-<img src="assets/whgp.jpg" width="70%">
+<img src="assets/哀弦篇_01.jpg" width="50%">
 
-以望华国篇为例。红色的字符是支持鲁迅为作者的特征，而灰色的字符则支持周作人可能是作者的观点。颜色越深，与每个特征相关的权重的绝对值越高。
-我们可以看到，支持鲁迅的特征遍布整篇文章。事实上，望华国篇被预测为鲁迅所写的概率为0.984。
+以《哀弦篇》的第一部分为例。红色调的字符表示支持鲁迅为作者的特征，而灰色字符则暗示周作人的作者身份。颜色越深，与每个特征相关的权重的绝对值越大。
+值得注意的是，支持鲁迅的特征遍布整个部分。实际上，*《哀弦篇》*的第一部分预测是由鲁迅创作的，概率为0.976。
 
 前往文件夹 
-[visualization](https://codeberg.org/haining/the_many_voices/src/branch/main/visualization)查看更多.
+[visualization](https://codeberg.org/hainingwang/four_hands/src/branch/main/visualization)查看更多.
 
 
 ## 许可证
@@ -78,4 +65,4 @@ python -m run
 
 ## 鸣谢
 
-该这个项目得到了中国国家社会科学基金（22CTQ041）的支持，以及印第安纳大学布卢明顿校区的数字艺术和人文研究所的人文，艺术，科学和技术联盟实验室奖学金的支持。
+该这个项目得到了中国国家社会科学基金（22CTQ041）的支持。
