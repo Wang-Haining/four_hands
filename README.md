@@ -9,7 +9,7 @@ on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'*.
 We found evidence suggesting that *The Strings of Melancholy*, conventionally credited as Zhou Zuoren's solo work, 
 was likely not written solely by Zhou Zuoren. Please refer to our [manuscript](#citation) for details.
 
-<img src="assets/axp.jpg" width="25%">
+<img src="assets/axp.jpg" width="30%">
 
 ## Reproduction
 
@@ -45,7 +45,7 @@ python -m run
 
 ## Visualization
 
-<img src="assets/哀弦篇_01.jpg" width="50%">
+<img src="assets/哀弦篇_01.jpg" width="70%">
 
 Consider the first section of *The Strings of Melancholy* as an example. Characters in reddish hues indicate features 
 that favor Lu Xun as the author, while gray characters suggest Zhou Zuoren's authorship. The darker the shade, the 
