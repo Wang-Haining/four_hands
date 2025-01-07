@@ -1,5 +1,10 @@
 """
-This module attributes passages in 哀弦篇.
+Authorship analysis for '哀弦篇' using LLMs.
+
+This module implements a voting-based approach to determine whether passages from
+'哀弦篇' were written by Lu Xun, Zhou Zuoren, or collaboratively. It supports
+multiple analysis strategies (basic/zero-shot/few-shot/chain-of-thought) and
+various LLM backends (local or remote).
 """
 
 import os
