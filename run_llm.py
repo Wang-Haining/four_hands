@@ -194,6 +194,9 @@ class ModelManager:
 
         except Exception as e:
             print(f"Generation error: {e}")
+            print("*"*90)
+            print(f"Invalid response: {result}")
+            print("*" * 90)
             return None
 
     def generate_with_retries(self, prompt: str, required_results: int) -> List[Dict[str, Any]]:
