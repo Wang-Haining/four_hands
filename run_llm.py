@@ -139,11 +139,16 @@ class ModelManager:
             assert "OPENAI_API_KEY" in os.environ, "OpenAI API key not found"
             openai.api_key = os.environ["OPENAI_API_KEY"]
         else:
-            # Fix: Correctly pass model parameter to LLM initialization
-            self.model = LLM(model=model_name,  # Changed from model_name to model=model_name
+            self.model = LLM(
+                model=model_name,
                 trust_remote_code=True,
                 dtype="float16",
                 gpu_memory_utilization=0.8,
+                tensor_parallel_size=1,
+                enforce_eager=True,
+                max_num_batched_tokens=1024*5,
+                quantization=None,
+                device="cuda",
             )
             self.sampling_params = SamplingParams(
                 temperature=temperature,
