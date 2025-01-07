@@ -6,7 +6,7 @@ Melancholy' (哀弦篇) as a whole and for each of its six sections. It also pro
 feature weights and the relative frequency per thousand characters for each author.
 
 The code is mostly inherited from our previous repository
-https://codeberg.org/haining/the_many_voices.
+https://github.com/Wang-Haining/the_many_voices
 """
 
 __author__ = "hw56@indiana.edu"
