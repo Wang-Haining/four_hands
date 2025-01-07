@@ -125,7 +125,7 @@ class PromptManager:
 
 
 class ModelManager:
-    """Manages different LLM backends (OpenAI API and local models)."""
+    """Manage different LLM backends (OpenAI API and local models)."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42,
                  max_retries: int = 5):
@@ -139,8 +139,8 @@ class ModelManager:
             assert "OPENAI_API_KEY" in os.environ, "OpenAI API key not found"
             openai.api_key = os.environ["OPENAI_API_KEY"]
         else:
-            self.model = LLM(
-                model_name=model_name,
+            # Fix: Correctly pass model parameter to LLM initialization
+            self.model = LLM(model=model_name,  # Changed from model_name to model=model_name
                 trust_remote_code=True,
                 dtype="float16",
                 gpu_memory_utilization=0.8,
