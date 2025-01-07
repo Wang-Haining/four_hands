@@ -182,22 +182,39 @@ class ModelManager:
                     temperature=self.temperature,
                     seed=run_seed
                 )
-                result = json.loads(response.choices[0].message.content)
+                raw_response = response.choices[0].message.content
             else:
                 self.sampling_params.seed = run_seed
                 outputs = self.model.generate([prompt], self.sampling_params)
-                result = json.loads(outputs[0].outputs[0].text)
+                raw_response = outputs[0].outputs[0].text
+
+            try:
+                result = json.loads(raw_response)
+            except json.JSONDecodeError:
+                print("=" * 90)
+                print("JSON Parsing Failed. Raw response:")
+                print(raw_response)
+                print("=" * 90)
+                return None
 
             if self._is_valid_response(result):
                 return result
             else:
-                print("*" * 90)
-                print(f"Invalid response: {result}")
-                print("*" * 90)
-            return None
+                print("=" * 90)
+                print(f"Invalid response structure. Response received:")
+                print(f"Raw response: {raw_response}")
+                print(f"Parsed result: {result}")
+                if isinstance(result, dict):
+                    print(
+                        f"Missing/invalid fields: {'author' if 'author' not in result else 'valid author value' if result.get('author') not in ['LX', 'ZZR', 'COLLAB'] else 'none'}")
+                print("=" * 90)
+                return None
 
         except Exception as e:
-            print(f"Generation error: {e}")
+            print("=" * 90)
+            print(f"Generation error ({type(e).__name__}): {str(e)}")
+            print("Raw response (if available):", locals().get('raw_response', 'N/A'))
+            print("=" * 90)
             return None
 
     def generate_with_retries(self, prompt: str, required_results: int) -> List[Dict[str, Any]]:
