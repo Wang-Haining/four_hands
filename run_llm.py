@@ -171,8 +171,8 @@ Use these linguistic markers to analyze the passage and justify your decision.""
         # add CoT-specific instructions if applicable
         if stage == "cot":
             user_prompt_parts.append(
-                "Please analyze step by step, considering the presence and usage of "
-                "characteristic markers from both authors."
+                "Please think aloud and reason the likely author step by step based on "
+                "character and punctuation frequency before reaching a conclusion."
             )
 
         # add the text to analyze at the end
