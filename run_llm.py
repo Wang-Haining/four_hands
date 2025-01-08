@@ -167,13 +167,13 @@ class ModelManager:
                 gpu_memory_utilization=0.8,
                 tensor_parallel_size=1,
                 enforce_eager=True,
-                max_num_batched_tokens=1024*5,
+                max_num_batched_tokens=1024*2,
                 quantization=None,
                 device="cuda",
             )
             self.sampling_params = SamplingParams(
                 temperature=temperature,
-                max_tokens=1024*10,
+                max_tokens=1024*2,
                 seed=seed
             )
 
