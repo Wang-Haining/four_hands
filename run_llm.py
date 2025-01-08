@@ -194,7 +194,7 @@ class ModelManager:
         return True
 
     def _generate_single(self, prompt: str, run_seed: int) -> Optional[Dict[str, Any]]:
-        """Single generation attempt with improved error handling."""
+        """Single generation attempt with simplified response handling."""
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
@@ -213,22 +213,23 @@ class ModelManager:
                 outputs = self.model.generate([prompt], self.sampling_params)
                 raw_response = outputs[0].outputs[0].text
 
-            # clean up the response
+            # clean up first
             raw_response = raw_response.strip()
 
-            # ensure response starts with {
-            if not raw_response.startswith('{'):
-                start_idx = raw_response.find('{')
-                if start_idx != -1:
-                    raw_response = raw_response[start_idx:]
-                else:
-                    print("No JSON object found in response")
-                    return None
+            # find the complete JSON object
+            start_idx = raw_response.find('{')
+            if start_idx == -1:
+                print("No JSON object found in response")
+                return None
 
-            # ensure response ends with }
-            end_idx = raw_response.rfind('}')
-            if end_idx != -1:
-                raw_response = raw_response[:end_idx + 1]
+            raw_response = raw_response[start_idx:]
+            end_idx = raw_response.find('}')
+            if end_idx == -1:
+                print("No closing brace found in response")
+                return None
+
+            # take the first complete JSON object
+            raw_response = raw_response[:end_idx + 1]
 
             try:
                 result = json.loads(raw_response)
