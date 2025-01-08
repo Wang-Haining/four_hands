@@ -61,14 +61,14 @@ class PromptManager:
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
-        # Remove analysis field from system message - it should be stage-specific
         self.system_msg = """You are an expert in Chinese literature, specializing in 
         stylometric analysis. You will analyze a passage from the disputed work 哀弦篇 to 
         determine if it was written by Lu Xun (鲁迅), Zhou Zuoren (周作人), 
         or was a collaboration between the brothers.
 
-        IMPORTANT: You must ONLY respond with a valid JSON object. Do not include ANY text 
-        before or after the JSON. The JSON must contain the required fields and end with a single closing brace.
+        IMPORTANT: You must ONLY respond with a valid JSON object. Do not include ANY 
+        text before or after the JSON. The JSON must contain the required fields and 
+        end with a single closing brace.
         """
 
     def _get_knowledge(self) -> str:
@@ -109,7 +109,8 @@ class PromptManager:
         """Get the expected output format based on the stage."""
         if stage == "cot":
             return """{
-    "analysis": "Provide detailed step-by-step reasoning about the stylometric features you identified and how they led to your decision",
+    "analysis": "Provide detailed step-by-step reasoning about the stylometric features 
+    you identified and how they led to your decision",
     "author": "LX" or "ZZR" or "COLLAB"
 }"""
         else:
@@ -182,11 +183,11 @@ class ModelManager:
         if not isinstance(response, dict):
             return False
 
-        # Check required fields
+        # check required fields
         if "author" not in response:
             return False
 
-        # Validate author value
+        # validate author value
         if response["author"] not in ["LX", "ZZR", "COLLAB"]:
             return False
 
@@ -293,19 +294,19 @@ def compute_vote_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     possible_authors = ["LX", "ZZR", "COLLAB"]
 
-    # Count votes
+    # count votes
     vote_counts = Counter(result["author"] for result in results)
     total_votes = len(results)
 
-    # Calculate probabilities for each class
+    # calculate probabilities for each class
     pred_proba = {author: vote_counts.get(author, 0) / total_votes
                  for author in possible_authors}
 
-    # Get winner and confidence
+    # get winner and confidence
     winner = max(pred_proba.items(), key=lambda x: x[1])[0]
     confidence = pred_proba[winner]
 
-    # Aggregate analysis from majority class
+    # aggregate analysis from majority class
     majority_analyses = [r.get("analysis", "") for r in results if r["author"] == winner]
     analysis = random.choice(majority_analyses) if majority_analyses else "No analysis available"
 
