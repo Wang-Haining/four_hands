@@ -216,14 +216,9 @@ class ModelManager:
                 gpu_memory_utilization=0.8,
                 tensor_parallel_size=1,
                 enforce_eager=True,
-                max_num_batched_tokens=1024*2,
+                max_num_batched_tokens=1024 * 2,
                 quantization=None,
                 device="cuda",
-            )
-            self.sampling_params = SamplingParams(
-                temperature=temperature,
-                max_tokens=1024*2,
-                seed=seed
             )
 
     def _is_valid_response(self, response: Dict[str, Any]) -> bool:
@@ -241,7 +236,8 @@ class ModelManager:
 
         return True
 
-    def _generate_single(self, prompt_dict: Dict[str, str], run_seed: int) -> Optional[Dict[str, Any]]:
+    def _generate_single(self, prompt_dict: Dict[str, str], run_seed: int) -> Optional[
+        Dict[str, Any]]:
         """Single generation attempt with simplified response handling."""
         try:
             if self.is_openai:
@@ -256,11 +252,18 @@ class ModelManager:
                 )
                 raw_response = response.choices[0].message.content
             else:
+                # create new SamplingParams for each run to ensure seed isolation
                 formatted_prompt = f"""[INST] <<SYS>>{prompt_dict["system"]}<</SYS>>
 
-                {prompt_dict["user"]} [/INST]"""
-                self.sampling_params.seed = run_seed
-                outputs = self.model.generate([formatted_prompt], self.sampling_params)
+{prompt_dict["user"]} [/INST]"""
+
+                sampling_params = SamplingParams(
+                    temperature=self.temperature,
+                    max_tokens=1024 * 2,
+                    seed=run_seed
+                )
+
+                outputs = self.model.generate([formatted_prompt], sampling_params)
                 raw_response = outputs[0].outputs[0].text
 
             # clean up first
@@ -306,12 +309,13 @@ class ModelManager:
             print("=" * 90)
             return None
 
-    def generate_with_retries(self, prompt_dict: Dict[str, str], required_results: int):
+    def generate_with_retries(self, prompt_dict: Dict[str, str],
+                              required_results: int) -> List[Dict[str, Any]]:
         """
         Generate responses until required number of valid results is obtained.
 
         Args:
-            prompt: The input prompt
+            prompt_dict: Dictionary containing system and user prompts
             required_results: Number of valid results needed
 
         Returns:
@@ -321,7 +325,8 @@ class ModelManager:
         attempt = 0
         run_id = 0
 
-        while len(valid_results) < required_results and attempt < required_results * self.max_retries:
+        while len(
+                valid_results) < required_results and attempt < required_results * self.max_retries:
             run_seed = self.seed + run_id
             result = self._generate_single(prompt_dict, run_seed)
 
