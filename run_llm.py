@@ -21,7 +21,7 @@ from utils import load_corpus
 
 
 class ExperimentLogger:
-    """Handles logging of experimental results."""
+    """Handle logging of experimental results."""
 
     def __init__(self):
         self.output_dir = Path("results")
@@ -35,14 +35,26 @@ class ExperimentLogger:
                 f"seed{config['seed']}_"
                 f"{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-    def save_experiment(self, config: Dict, prompt: str, results: List[Dict]):
+    def save_experiment(self, config: Dict, prompt_dict: Dict[str, str], results: List[Dict]):
         """Save single experiment results."""
         experiment_id = self.get_experiment_id(config)
 
-        # organize experiment data
+        # for vLLM/Llama format reference (though we save raw prompts)
+        formatted_prompt = f"""[INST] <<SYS>>
+{prompt_dict["system"]}
+<</SYS>>
+
+{prompt_dict["user"]} [/INST]"""
+
+        # Organize experiment data
         experiment_data = {
             "config": config,
-            "prompt": prompt,
+            "prompt": {
+                "raw": prompt_dict,  # Save original prompts
+                "system": prompt_dict["system"],
+                "user": prompt_dict["user"],
+                "formatted": formatted_prompt  # Save formatted version for reference
+            },
             "individual_results": results,
             "aggregated_result": compute_vote_results(results)
         }
@@ -55,30 +67,48 @@ class ExperimentLogger:
         print(f"\nExperiment results saved to: {output_file}")
         self._print_experiment_summary(experiment_data)
 
+    def _print_experiment_summary(self, data: Dict):
+        """Print a summary of the experiment results."""
+        print("\nExperiment Summary:")
+        print(f"Model: {data['config']['model']}")
+        print(f"Stage: {data['config']['stage']}")
+        print(f"Temperature: {data['config']['temperature']}")
+        print(f"Sample Size: {len(data['individual_results'])}")
+        print("\nResults:")
+        print(f"Predicted Author: {data['aggregated_result']['author']}")
+        print(f"Confidence: {data['aggregated_result']['confidence']:.2%}")
+        print("\nVote Distribution:")
+        for author, votes in data['aggregated_result']['vote_distribution'].items():
+            print(f"{author}: {votes:.2%}")
+
 
 class PromptManager:
     """Manage different prompting strategies for authorship analysis."""
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
+        # system prompt
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-        stylometric analysis. You will analyze a passage from the disputed work 哀弦篇 to 
-        determine if it was written by Lu Xun (鲁迅), Zhou Zuoren (周作人), 
-        or was a collaboration between the brothers.
+stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
+to determine their authorship.
 
-        IMPORTANT: You must ONLY respond with a valid JSON object. Do not include ANY 
-        text before or after the JSON. The JSON must contain the required fields and 
-        end with a single closing brace.
-        """
+IMPORTANT: You must respond ONLY with a valid JSON object.
+Do not include ANY text before or after the JSON."""
+
+    def _get_basic(self) -> str:
+        """Return linguistic knowledge for zero-shot prompting."""
+        return """Analyze the writing styles of the input texts, disregarding 
+        differences in topic and content, and reason based on linguistic features 
+        such as character and punctuation frequency."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
-        return f"""Consider these 31 key linguistic features that distinguish between 
-        the authors. Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 
-        足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫. Features supporting Zhou 
-        Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随. Use this knowledge 
-        to analyze the given disputed passage, identify its likely author, and justify 
-        your decision by referencing relevant linguistic features."""
+        return """Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 
+足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫.
+
+Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随.
+
+Use these linguistic markers to analyze the passage and justify your decision."""
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
         """Generate few-shot examples from training data."""
@@ -102,15 +132,16 @@ class PromptManager:
                                                        min(remaining_slots,
                                                            len(all_examples))))
 
-        return "\n".join([f"Text: {ex['text']}\nAuthor: {ex['author'].upper()}\n"
-                          for ex in selected_examples])
+        return "\n".join([
+            f"Example {i + 1}:\nText: {ex['text']}\nAuthor: {ex['author'].upper()}\n"
+            for i, ex in enumerate(selected_examples)
+        ])
 
     def _get_output_format(self, stage: str) -> str:
         """Get the expected output format based on the stage."""
         if stage == "cot":
             return """{
-    "analysis": "Provide detailed step-by-step reasoning about the stylometric features 
-    you identified and how they led to your decision",
+    "analysis": "Your step-by-step reasoning about the stylometric features and decision",
     "author": "LX" or "ZZR" or "COLLAB"
 }"""
         else:
@@ -120,30 +151,47 @@ class PromptManager:
 
     def construct_prompt(self, text: str, stage: str,
                          train_data: Optional[List[Dict]] = None,
-                         num_examples: int = 0) -> str:
-        """Construct the full prompt based on stage and parameters."""
-        # start with system message
-        prompt = f"{self.system_msg}\n\n"
+                         num_examples: int = 0) -> Dict[str, str]:
+        """Construct the full prompt based on stage and parameters.
 
-        # add output format instructions
-        prompt += f"Your response must match this JSON format:\n{self._get_output_format(stage)}\n\n"
+        Returns:
+            Dict with 'system' and 'user' prompts separately.
+        """
+        # build the user prompt piece by piece
+        user_prompt_parts = []
 
-        # add the text to analyze
-        prompt += f"Analyze this text:\n{text}\n\n"
+        # start with format instructions
+        user_prompt_parts.append(
+            f"Required JSON format:\n{self._get_output_format(stage)}")
+
+        # ignore content (Huang et al. 2024)
+        user_prompt_parts.append(self._get_basic())
 
         # add zero-shot knowledge if applicable
         if stage in ["zero-shot", "few-shot", "cot"]:
-            prompt += f"Use this linguistic knowledge:\n{self._get_knowledge()}\n\n"
+            user_prompt_parts.append("Linguistic Features to Consider:")
+            user_prompt_parts.append(self._get_knowledge())
 
         # add examples if applicable
         if stage in ["few-shot", "cot"] and train_data and num_examples > 0:
-            prompt += f"Here are some examples:\n{self._get_examples(train_data, num_examples)}\n\n"
+            user_prompt_parts.append("Reference Examples:")
+            user_prompt_parts.append(self._get_examples(train_data, num_examples))
 
         # add CoT-specific instructions if applicable
         if stage == "cot":
-            prompt += """Please think aloud and reason step by step and include this analysis in your response."""
+            user_prompt_parts.append(
+                "Please analyze step by step, considering the presence and usage of "
+                "characteristic markers from both authors."
+            )
 
-        return prompt
+        # add the text to analyze at the end
+        user_prompt_parts.append("Text to Analyze:")
+        user_prompt_parts.append(text)
+
+        return {
+            "system": self.system_msg,
+            "user": "\n\n".join(user_prompt_parts)
+        }
 
 
 class ModelManager:
@@ -193,24 +241,26 @@ class ModelManager:
 
         return True
 
-    def _generate_single(self, prompt: str, run_seed: int) -> Optional[Dict[str, Any]]:
+    def _generate_single(self, prompt_dict: Dict[str, str], run_seed: int) -> Optional[Dict[str, Any]]:
         """Single generation attempt with simplified response handling."""
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
                     messages=[
-                        {"role": "system",
-                         "content": "You must ONLY output valid JSON."},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": prompt_dict["system"]},
+                        {"role": "user", "content": prompt_dict["user"]}
                     ],
                     temperature=self.temperature,
                     seed=run_seed
                 )
                 raw_response = response.choices[0].message.content
             else:
+                formatted_prompt = f"""[INST] <<SYS>>{prompt_dict["system"]}<</SYS>>
+
+                {prompt_dict["user"]} [/INST]"""
                 self.sampling_params.seed = run_seed
-                outputs = self.model.generate([prompt], self.sampling_params)
+                outputs = self.model.generate([formatted_prompt], self.sampling_params)
                 raw_response = outputs[0].outputs[0].text
 
             # clean up first
@@ -256,7 +306,7 @@ class ModelManager:
             print("=" * 90)
             return None
 
-    def generate_with_retries(self, prompt: str, required_results: int) -> List[Dict[str, Any]]:
+    def generate_with_retries(self, prompt_dict: Dict[str, str], required_results: int):
         """
         Generate responses until required number of valid results is obtained.
 
@@ -273,7 +323,7 @@ class ModelManager:
 
         while len(valid_results) < required_results and attempt < required_results * self.max_retries:
             run_seed = self.seed + run_id
-            result = self._generate_single(prompt, run_seed)
+            result = self._generate_single(prompt_dict, run_seed)
 
             if result is not None:
                 valid_results.append(result)
