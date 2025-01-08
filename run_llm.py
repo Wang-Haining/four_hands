@@ -39,27 +39,18 @@ class ExperimentLogger:
         """Save single experiment results."""
         experiment_id = self.get_experiment_id(config)
 
-        # for vLLM/Llama format reference (though we save raw prompts)
-        formatted_prompt = f"""[INST] <<SYS>>
-{prompt_dict["system"]}
-<</SYS>>
-
-{prompt_dict["user"]} [/INST]"""
-
-        # Organize experiment data
+        # organize experiment data
         experiment_data = {
             "config": config,
             "prompt": {
-                "raw": prompt_dict,  # Save original prompts
                 "system": prompt_dict["system"],
                 "user": prompt_dict["user"],
-                "formatted": formatted_prompt  # Save formatted version for reference
             },
             "individual_results": results,
             "aggregated_result": compute_vote_results(results)
         }
 
-        # save to JSON file
+        # save to JSON
         output_file = self.output_dir / f"{experiment_id}.json"
         with output_file.open('w', encoding='utf-8') as f:
             json.dump(experiment_data, f, ensure_ascii=False, indent=2)
@@ -112,7 +103,7 @@ Use these linguistic markers to analyze the passage and justify your decision.""
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
         """Generate few-shot examples from training data."""
-        authors = ["lx", "zzr", "collab"]
+        authors = ["lx", "zzr"]
         examples_per_author = {author: [] for author in authors}
 
         for d in train_data:
@@ -142,11 +133,11 @@ Use these linguistic markers to analyze the passage and justify your decision.""
         if stage == "cot":
             return """{
     "analysis": "Your step-by-step reasoning about the stylometric features and decision",
-    "author": "LX" or "ZZR" or "COLLAB"
+    "author": "LX" or "ZZR"
 }"""
         else:
             return """{
-    "author": "LX" or "ZZR" or "COLLAB"
+    "author": "LX" or "ZZR"
 }"""
 
     def construct_prompt(self, text: str, stage: str,
@@ -231,10 +222,18 @@ class ModelManager:
             return False
 
         # validate author value
-        if response["author"] not in ["LX", "ZZR", "COLLAB"]:
+        if response["author"] not in ["LX", "ZZR"]:
             return False
 
         return True
+
+    def _format_chat_messages(self, prompt_dict: Dict[str, str]) -> List[
+        Dict[str, str]]:
+        """Format prompts into chat messages."""
+        return [
+            {"role": "system", "content": prompt_dict["system"]},
+            {"role": "user", "content": prompt_dict["user"]}
+        ]
 
     def _generate_single(self, prompt_dict: Dict[str, str], run_seed: int) -> Optional[
         Dict[str, Any]]:
@@ -243,30 +242,31 @@ class ModelManager:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": prompt_dict["system"]},
-                        {"role": "user", "content": prompt_dict["user"]}
-                    ],
+                    messages=self._format_chat_messages(prompt_dict),
                     temperature=self.temperature,
                     seed=run_seed
                 )
                 raw_response = response.choices[0].message.content
             else:
-                # create new SamplingParams for each run to ensure seed isolation
-                formatted_prompt = f"""[INST] <<SYS>>{prompt_dict["system"]}<</SYS>>
-
-{prompt_dict["user"]} [/INST]"""
-
+                # create new SamplingParams for each run
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
                     max_tokens=1024 * 2,
                     seed=run_seed
                 )
 
-                outputs = self.model.generate([formatted_prompt], sampling_params)
+                # format as chat messages
+                chat_messages = self._format_chat_messages(prompt_dict)
+
+                # generate using chat API
+                outputs = self.model.chat(
+                    messages=[chat_messages],  # wrap in list for single request
+                    sampling_params=sampling_params,
+                    use_tqdm=False
+                )
                 raw_response = outputs[0].outputs[0].text
 
-            # clean up first
+            # clean up and parse response
             raw_response = raw_response.strip()
 
             # find the complete JSON object
@@ -323,7 +323,7 @@ class ModelManager:
         """
         valid_results = []
         attempt = 0
-        run_id = 0
+        run_id = 1073
 
         while len(
                 valid_results) < required_results and attempt < required_results * self.max_retries:
@@ -348,7 +348,7 @@ def compute_vote_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     Compute aggregated results from multiple runs.
     Assumes all results are valid (no ERROR states).
     """
-    possible_authors = ["LX", "ZZR", "COLLAB"]
+    possible_authors = ["LX", "ZZR"]
 
     # count votes
     vote_counts = Counter(result["author"] for result in results)
