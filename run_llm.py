@@ -61,21 +61,18 @@ class PromptManager:
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
+        # Remove analysis field from system message - it should be stage-specific
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-        stylometric analysis. You analyze a passage from the disputed work 哀弦篇 to 
-        determine if they were written by Lu Xun (鲁迅), Zhou Zuoren (周作人), 
-        or were a collaboration between the brothers. Analyze the writing styles of the 
-        input texts, disregarding the differences in topic and content.
-        Respond with a valid, flat JSON object containing:
-        {
-            %s
-            "author": One of ["LX", "ZZR", "COLLAB"],
-        }""" % (
-            '"analysis": "Step-by-step reasoning about your decision",\n' if use_cot else '')
+        stylometric analysis. You will analyze a passage from the disputed work 哀弦篇 to 
+        determine if it was written by Lu Xun (鲁迅), Zhou Zuoren (周作人), 
+        or was a collaboration between the brothers.
+
+        IMPORTANT: You must ONLY respond with a valid JSON object. Do not include ANY text 
+        before or after the JSON. The JSON must contain the required fields and end with a single closing brace.
+        """
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
-
         return f"""Consider these 31 key linguistic features that distinguish between 
         the authors. Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 
         足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫. Features supporting Zhou 
@@ -85,7 +82,6 @@ class PromptManager:
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
         """Generate few-shot examples from training data."""
-
         authors = ["lx", "zzr", "collab"]
         examples_per_author = {author: [] for author in authors}
 
@@ -109,17 +105,42 @@ class PromptManager:
         return "\n".join([f"Text: {ex['text']}\nAuthor: {ex['author'].upper()}\n"
                           for ex in selected_examples])
 
+    def _get_output_format(self, stage: str) -> str:
+        """Get the expected output format based on the stage."""
+        if stage == "cot":
+            return """{
+    "analysis": "Provide detailed step-by-step reasoning about the stylometric features you identified and how they led to your decision",
+    "author": "LX" or "ZZR" or "COLLAB"
+}"""
+        else:
+            return """{
+    "author": "LX" or "ZZR" or "COLLAB"
+}"""
+
     def construct_prompt(self, text: str, stage: str,
                          train_data: Optional[List[Dict]] = None,
                          num_examples: int = 0) -> str:
         """Construct the full prompt based on stage and parameters."""
-        prompt = f"{self.system_msg}\n\nAnalyze this text:\n{text}\n\n"
+        # start with system message
+        prompt = f"{self.system_msg}\n\n"
 
+        # add output format instructions
+        prompt += f"Your response must match this JSON format:\n{self._get_output_format(stage)}\n\n"
+
+        # add the text to analyze
+        prompt += f"Analyze this text:\n{text}\n\n"
+
+        # add zero-shot knowledge if applicable
         if stage in ["zero-shot", "few-shot", "cot"]:
-            prompt += f"\nUse this linguistic knowledge:\n{self._get_knowledge()}"
+            prompt += f"Use this linguistic knowledge:\n{self._get_knowledge()}\n\n"
 
+        # add examples if applicable
         if stage in ["few-shot", "cot"] and train_data and num_examples > 0:
-            prompt += f"\nHere are some examples:\n{self._get_examples(train_data, num_examples)}"
+            prompt += f"Here are some examples:\n{self._get_examples(train_data, num_examples)}\n\n"
+
+        # add CoT-specific instructions if applicable
+        if stage == "cot":
+            prompt += """Please think aloud and reason step by step and include this analysis in your response."""
 
         return prompt
 
@@ -153,7 +174,6 @@ class ModelManager:
             self.sampling_params = SamplingParams(
                 temperature=temperature,
                 max_tokens=1024*10,
-                stop=["}"],
                 seed=seed
             )
 
@@ -173,12 +193,16 @@ class ModelManager:
         return True
 
     def _generate_single(self, prompt: str, run_seed: int) -> Optional[Dict[str, Any]]:
-        """Single generation attempt with error handling."""
+        """Single generation attempt with improved error handling."""
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
-                    messages=[{"role": "system", "content": prompt}],
+                    messages=[
+                        {"role": "system",
+                         "content": "You must ONLY output valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
                     temperature=self.temperature,
                     seed=run_seed
                 )
@@ -188,11 +212,29 @@ class ModelManager:
                 outputs = self.model.generate([prompt], self.sampling_params)
                 raw_response = outputs[0].outputs[0].text
 
+            # clean up the response
+            raw_response = raw_response.strip()
+
+            # ensure response starts with {
+            if not raw_response.startswith('{'):
+                start_idx = raw_response.find('{')
+                if start_idx != -1:
+                    raw_response = raw_response[start_idx:]
+                else:
+                    print("No JSON object found in response")
+                    return None
+
+            # ensure response ends with }
+            end_idx = raw_response.rfind('}')
+            if end_idx != -1:
+                raw_response = raw_response[:end_idx + 1]
+
             try:
                 result = json.loads(raw_response)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
                 print("=" * 90)
-                print("JSON Parsing Failed. Raw response:")
+                print(f"JSON Parsing Failed. Error: {str(e)}")
+                print("Raw response:")
                 print(raw_response)
                 print("=" * 90)
                 return None
@@ -201,19 +243,14 @@ class ModelManager:
                 return result
             else:
                 print("=" * 90)
-                print(f"Invalid response structure. Response received:")
-                print(f"Raw response: {raw_response}")
-                print(f"Parsed result: {result}")
-                if isinstance(result, dict):
-                    print(
-                        f"Missing/invalid fields: {'author' if 'author' not in result else 'valid author value' if result.get('author') not in ['LX', 'ZZR', 'COLLAB'] else 'none'}")
+                print(f"Invalid response structure:")
+                print(json.dumps(result, indent=2, ensure_ascii=False))
                 print("=" * 90)
                 return None
 
         except Exception as e:
             print("=" * 90)
             print(f"Generation error ({type(e).__name__}): {str(e)}")
-            print("Raw response (if available):", locals().get('raw_response', 'N/A'))
             print("=" * 90)
             return None
 
@@ -247,6 +284,7 @@ class ModelManager:
                   f"out of {required_results} requested after {attempt} attempts")
 
         return valid_results
+
 
 def compute_vote_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
