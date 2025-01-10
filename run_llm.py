@@ -29,11 +29,13 @@ class ExperimentLogger:
 
     def get_experiment_id(self, config: Dict) -> str:
         """Generate unique experiment identifier."""
-        return (f"{config['model'].split('/')[-1]}_"
-                f"stage-{config['stage']}_"
-                f"temp{config['temperature']}_"
-                f"seed{config['seed']}_"
-                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        model_short = config['model'].split('/')[-1]
+        return (f"{model_short}"
+                f"_stage-{config['stage']}"
+                f"_temp-{config['temperature']}"
+                f"_doc-{config['test_doc'].replace(' ', '_')}"
+                f"_runs-{config['num_runs']}"
+                f"_seed-{config['seed']}")
 
     def save_experiment(self, config: Dict, prompt_dict: Dict[str, str], results: List[Dict]):
         """Save single experiment results."""
@@ -204,11 +206,13 @@ class ModelManager:
                 model=model_name,
                 trust_remote_code=True,
                 dtype="float16",
-                gpu_memory_utilization=0.8,
-                tensor_parallel_size=1,
+                gpu_memory_utilization=0.85,
+                tensor_parallel_size=2 if "70B" in model_name else 1,
+                # use 2 GPUs for 70B
                 enforce_eager=True,
-                max_num_batched_tokens=1024 * 4,
-                quantization=None,
+                max_num_batched_tokens=4096,
+                quantization="8bit" if "70B" in model_name else None,
+                # add quantization for 70B
                 device="cuda",
             )
 
@@ -311,19 +315,10 @@ class ModelManager:
 
     def generate_with_retries(self, prompt_dict: Dict[str, str],
                               required_results: int) -> List[Dict[str, Any]]:
-        """
-        Generate responses until required number of valid results is obtained.
-
-        Args:
-            prompt_dict: Dictionary containing system and user prompts
-            required_results: Number of valid results needed
-
-        Returns:
-            List of valid results
-        """
         valid_results = []
         attempt = 0
         run_id = 1073
+        errors = []
 
         while len(
                 valid_results) < required_results and attempt < required_results * self.max_retries:
@@ -332,13 +327,19 @@ class ModelManager:
 
             if result is not None:
                 valid_results.append(result)
+            else:
+                errors.append(f"Failed attempt {attempt + 1} with seed {run_seed}")
 
             attempt += 1
             run_id += 1
 
-        if len(valid_results) < required_results:
-            print(f"Warning: Only obtained {len(valid_results)} valid results "
-                  f"out of {required_results} requested after {attempt} attempts")
+        success_rate = len(valid_results) / attempt if attempt > 0 else 0
+        if errors:
+            print(f"\nGeneration Statistics:")
+            print(f"Success rate: {success_rate:.2%}")
+            print(f"Total attempts: {attempt}")
+            print(f"Valid results: {len(valid_results)}")
+            print(f"First few errors: {errors[:3]}")
 
         return valid_results
 
