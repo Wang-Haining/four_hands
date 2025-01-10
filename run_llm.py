@@ -126,8 +126,13 @@ class ExperimentLogger:
 
 class AuthorshipResult(BaseModel):
     """Schema for the authorship analysis result."""
-    author: str = Literal['LX', 'ZZR']
-    analysis: Optional[str] = None
+    author: Literal['LX', 'ZZR'] = Field(
+        description="The predicted author: must be either 'LX' (Lu Xun) or 'ZZR' (Zhou Zuoren)"
+    )
+    analysis: Optional[str] = Field(
+        default=None,
+        description="Optional analysis explaining the reasoning behind the attribution"
+    )
 
 
 class PromptManager:
@@ -139,8 +144,11 @@ class PromptManager:
 
         # base system prompt with JSON emphasis
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
-to determine their authorship."""
+        stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
+        to determine their authorship.
+
+        IMPORTANT: You must categorize the author as EITHER 'LX' (Lu Xun) OR 'ZZR' (Zhou Zuoren).
+        No other author attributions are possible or allowed."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
@@ -238,7 +246,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """model manager with simple json validation and retry logic."""
+    """Model manager with improved JSON validation based on structured output techniques."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -261,21 +269,36 @@ class ModelManager:
             )
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
-        """format chat messages."""
+        """Format chat messages, ensuring JSON output."""
+        # Add JSON specific instructions to system message
+        enhanced_system = (
+            f"{system_msg}\n"
+            "You must respond with ONLY a valid JSON object - no other text. "
+            "Start your response with '{' and end with '}'."
+        )
+
+        # Ensure user message emphasizes JSON requirement
+        enhanced_user = (
+            f"{user_msg}\n"
+            "Remember to ONLY output the JSON object, nothing else."
+        )
+
         return [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg}
+            {"role": "system", "content": enhanced_system},
+            {"role": "user", "content": enhanced_user},
+            # Prefill to ensure JSON start
+            {"role": "assistant", "content": "{"}
         ]
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """generate a single valid response."""
+        """Generate a single valid response with JSON enforcement."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
-                    messages=messages,
+                    messages=messages[:-1],  # Don't include prefill for OpenAI
                     temperature=self.temperature,
                     response_format={"type": "json_object"}
                 )
@@ -290,9 +313,9 @@ class ModelManager:
                     messages=messages,
                     sampling_params=sampling_params
                 )
-                result = result[0].outputs[0].text
-                print(result)
+                result = "{" + result[0].outputs[0].text  # Add back the prefill
 
+            # validate with pydantic
             return AuthorshipResult.model_validate_json(result).model_dump()
 
         except Exception as e:
@@ -301,7 +324,7 @@ class ModelManager:
 
     def generate_with_retries(self, prompt: Dict[str, str], num_runs: int,
                               max_retries: int = 3) -> List[Dict[str, Any]]:
-        """generate multiple responses with retry logic."""
+        """Generate multiple responses with retry logic."""
         valid_results = []
         attempts = 0
         run_id = self.seed + 1000  # base for run seeds
