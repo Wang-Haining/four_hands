@@ -238,7 +238,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """model manager with robust json handling using lm-format-enforcer's character-level parsing."""
+    """model manager with robust json handling and validation."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -260,8 +260,13 @@ class ModelManager:
                 device="cuda",
             )
 
-            # initialize json schema parser
-            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
+            # initialize character level enforcer
+            config = CharacterLevelParserConfig(
+                alphabet=''.join(sorted(
+                    set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":{},[]/ \n\t.,_-+'))),
+                max_consecutive_whitespaces=4
+            )
+            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema(), config)
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
         """format chat messages."""
@@ -269,6 +274,21 @@ class ModelManager:
             {"role": "system", "content": system_msg},
             {"role": "user", "content": user_msg}
         ]
+
+    def _clean_json_output(self, text: str) -> str:
+        """clean and validate json output."""
+        # find first { and last }
+        try:
+            start = text.index('{')
+            end = text.rindex('}') + 1
+            text = text[start:end]
+
+            # try to parse it
+            json.loads(text)
+            return text
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"json cleaning error: {str(e)}")
+            raise
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """generate a single valid response using character-level json parsing."""
@@ -283,33 +303,39 @@ class ModelManager:
                     response_format={"type": "json_object"}
                 )
                 result = response.choices[0].message.content
-                # validate with pydantic
-                return AuthorshipResult.model_validate_json(result).model_dump()
+                cleaned_json = self._clean_json_output(result)
+                return AuthorshipResult.model_validate_json(cleaned_json).model_dump()
             else:
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
                     max_tokens=8192
                 )
 
-                # use regular chat first
+                # get raw output
                 result = self.model.chat(
                     messages=messages,
                     sampling_params=sampling_params
                 )
-
                 raw_text = result[0].outputs[0].text
 
-                # use character-level parsing
+                # clean it first
+                cleaned_json = self._clean_json_output(raw_text)
+
+                # enforce character by character
                 current_parser = self.parser
-                for char in raw_text:
+                for char in cleaned_json:
                     if char in current_parser.get_allowed_characters():
-                        current_parser = current_parser.add_character(char)
+                        try:
+                            current_parser = current_parser.add_character(char)
+                        except Exception as e:
+                            print(f"character parsing error at '{char}': {str(e)}")
+                            raise
 
                 if not current_parser.can_end():
-                    raise ValueError("Parser could not reach end state")
+                    raise ValueError("parser could not reach end state")
 
-                # validate the final result
-                return AuthorshipResult.model_validate_json(raw_text).model_dump()
+                # final validation
+                return AuthorshipResult.model_validate_json(cleaned_json).model_dump()
 
         except Exception as e:
             print(f"generation error: {str(e)}")
