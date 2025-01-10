@@ -312,16 +312,12 @@ class ModelManager:
                 device="cuda"
             )
 
-            # initialize tokenizer
+            # initialize tokenizer for validation only
             from transformers import AutoTokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-            # initialize JSON schema enforcer
+            # initialize JSON schema parser
             self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
-            self.prefix_function = build_transformers_prefix_allowed_tokens_fn(
-                self.tokenizer,
-                self.parser
-            )
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
         """Format chat messages with JSON schema."""
@@ -332,6 +328,26 @@ class ModelManager:
             {"role": "system", "content": enhanced_system},
             {"role": "user", "content": user_msg}
         ]
+
+    def _clean_response(self, text: str) -> str:
+        """Clean the response text to extract valid JSON."""
+        # remove any markdown code block markers
+        text = text.replace('```json', '').replace('```', '')
+
+        # remove any leading/trailing whitespace
+        text = text.strip()
+
+        # remove common prefixes that models might add
+        prefixes = [
+            "Here's the JSON response:",
+            "The JSON response is:",
+            "Response:",
+        ]
+        for prefix in prefixes:
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+
+        return text
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """Generate a single valid response."""
@@ -350,16 +366,24 @@ class ModelManager:
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
                     max_tokens=1024,
-                    prefix_allowed_tokens_fn=self.prefix_function
+                    stop=["\n\n", "```"]  # Stop at double newlines or code blocks
                 )
                 outputs = self.model.chat(
                     messages=messages,
                     sampling_params=sampling_params
                 )
-                result = outputs[0].outputs[0].text
+                result = self._clean_response(outputs[0].outputs[0].text)
 
             # validate against schema
-            return AuthorshipResult.model_validate_json(result).model_dump()
+            try:
+                # first try parsing as JSON
+                parsed = json.loads(result)
+                # then validate with Pydantic
+                validated = AuthorshipResult.model_validate(parsed)
+                return validated.model_dump()
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"Validation error: {str(e)}")
+                return None
 
         except Exception as e:
             print(f"Generation error: {str(e)}")
@@ -451,7 +475,7 @@ def main():
     # init
     random.seed(args.seed)
     train, val, test = load_corpus()
-    model_mgr = ModelManager(args.model, args.temperature)
+    model_mgr = ModelManager(args.model, args.temperature, args.seed)
     prompt_mgr = PromptManager(use_cot=(args.stage == "cot"))
     logger = ExperimentLogger()
 
