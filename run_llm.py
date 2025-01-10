@@ -7,24 +7,29 @@ multiple analysis strategies (basic/zero-shot/few-shot/chain-of-thought) and
 various LLM backends (local or remote).
 """
 
-import os
-import json
-import random
-from pathlib import Path
-from datetime import datetime
-from collections import Counter
-from typing import List, Dict, Any, Optional
 import argparse
-from vllm import LLM, SamplingParams
+import json
+import os
+import random
+from collections import Counter
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import openai
+from lmformatenforcer import JsonSchemaParser
+from lmformatenforcer.integrations.transformers import \
+    build_transformers_prefix_allowed_tokens_fn
+from pydantic import BaseModel
+from vllm import LLM, SamplingParams
+
 from utils import load_corpus
 
 
 def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
     """Evaluate predictions against ground truth."""
-    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-    from sklearn.metrics import confusion_matrix
     import numpy as np
+    from sklearn.metrics import (accuracy_score, confusion_matrix,
+                                 precision_recall_fscore_support)
 
     # extract predictions and true labels
     y_true = [doc['author'].upper() for doc in ground_truth]
@@ -236,78 +241,14 @@ Use these linguistic markers to analyze the passage and justify your decision.""
         }
 
 
-def extract_and_parse_json(text: str, debug: bool = False) -> Optional[Dict]:
-    """Extract and parse JSON from text that might contain other content.
+class AuthorshipResult(BaseModel):
+    """Schema for the authorship analysis result."""
+    author: str  # Must be "LX" or "ZZR"
+    analysis: Optional[str] = None  # Optional for basic/zero-shot stages
 
-    Args:
-        text: String that may contain a JSON object
-        debug: If True, print detailed debug information
-
-    Returns:
-        Parsed JSON dict if successful, None otherwise
-    """
-
-    def debug_print(*args):
-        if debug:
-            print(*args)
-
-    try:
-        # clean up input
-        text = text.strip()
-
-        # find the first opening brace
-        start_idx = text.find('{')
-        if start_idx == -1:
-            debug_print("No JSON object found in text")
-            return None
-
-        text = text[start_idx:]
-
-        # find matching closing brace using brace counting
-        brace_count = 0
-        end_idx = -1
-        for i, char in enumerate(text):
-            if char == '{':
-                brace_count += 1
-            elif char == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    end_idx = i
-                    break
-
-        if end_idx == -1:
-            debug_print("No matching closing brace found")
-            return None
-
-        # extract the potential JSON object
-        json_str = text[:end_idx + 1]
-
-        # clean the text of control characters except newlines and tabs
-        json_str = ''.join(
-            char for char in json_str if ord(char) >= 32 or char in '\n\r\t')
-
-        # handle Unicode
-        json_str = json_str.encode('utf-8', 'ignore').decode('utf-8')
-
-        # try to parse
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError as e:
-            debug_print("=" * 90)
-            debug_print(f"JSON Parsing Failed. Error: {str(e)}")
-            debug_print("Raw JSON string:")
-            debug_print(json_str)
-            debug_print("=" * 90)
-            return None
-
-    except Exception as e:
-        debug_print("=" * 90)
-        debug_print(f"Unexpected error ({type(e).__name__}): {str(e)}")
-        debug_print("=" * 90)
-        return None
 
 class ModelManager:
-    """Manage different LLM backends (OpenAI API and local models)."""
+    """Manage different LLM backends with enforced JSON formatting."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42,
                  max_retries: int = 5):
@@ -327,40 +268,34 @@ class ModelManager:
                 dtype="float16",
                 gpu_memory_utilization=0.85,
                 tensor_parallel_size=2 if "70B" in model_name else 1,
-                # use 2 GPUs for 70B
-                enforce_eager=True,
+                enforce_eager=False,
                 max_num_batched_tokens=4096,
                 quantization="8bit" if "70B" in model_name else None,
-                # add quantization for 70B
-                device="cuda",
+                device="cuda"
             )
 
-    def _is_valid_response(self, response: Dict[str, Any]) -> bool:
-        """Validate if the response has required fields and valid values."""
-        if not isinstance(response, dict):
-            return False
+            # Create JSON schema parser
+            self.parser = JsonSchemaParser(AuthorshipResult.schema())
 
-        # check required fields
-        if "author" not in response:
-            return False
-
-        # validate author value
-        if response["author"] not in ["LX", "ZZR"]:
-            return False
-
-        return True
+            # Build prefix function for the tokenizer
+            self.prefix_function = build_transformers_prefix_allowed_tokens_fn(
+                self.model.tokenizer,
+                self.parser
+            )
 
     def _format_chat_messages(self, prompt_dict: Dict[str, str]) -> List[
         Dict[str, str]]:
         """Format prompts into chat messages."""
-        return [
-            {"role": "system", "content": prompt_dict["system"]},
+        messages = [
+            {"role": "system",
+             "content": f"{prompt_dict['system']}\n\nResponse must follow this JSON schema:\n{AuthorshipResult.schema_json()}"},
             {"role": "user", "content": prompt_dict["user"]}
         ]
+        return messages
 
     def _generate_single(self, prompt_dict: Dict[str, str], run_seed: int) -> Optional[
         Dict[str, Any]]:
-        """Single generation attempt with simplified response handling."""
+        """Single generation attempt with enforced JSON formatting."""
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
@@ -371,37 +306,26 @@ class ModelManager:
                 )
                 raw_response = response.choices[0].message.content
             else:
-                # create new SamplingParams for each run
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
                     max_tokens=1024 * 4,
                     seed=run_seed
                 )
 
-                # format as chat messages
-                chat_messages = self._format_chat_messages(prompt_dict)
-
-                # generate using chat API
                 outputs = self.model.chat(
-                    messages=[chat_messages],
+                    messages=self._format_chat_messages(prompt_dict),
                     sampling_params=sampling_params,
+                    prefix_allowed_tokens_fn=self.prefix_function,
                     use_tqdm=False
                 )
                 raw_response = outputs[0].outputs[0].text
 
-            # parse the response
-            result = extract_and_parse_json(raw_response, debug=True)
-
-            if result is None:
-                return None
-
-            if self._is_valid_response(result):
-                return result
-            else:
-                print("=" * 90)
-                print(f"Invalid response structure:")
-                print(json.dumps(result, indent=2, ensure_ascii=False))
-                print("=" * 90)
+            try:
+                # Parse into Pydantic model first for validation
+                result = AuthorshipResult.parse_raw(raw_response)
+                return result.dict()
+            except Exception as e:
+                print(f"Validation error: {str(e)}")
                 return None
 
         except Exception as e:
@@ -412,6 +336,7 @@ class ModelManager:
 
     def generate_with_retries(self, prompt_dict: Dict[str, str],
                               required_results: int) -> List[Dict[str, Any]]:
+        """Generate responses until required number of valid results is obtained."""
         valid_results = []
         attempt = 0
         run_id = 1073
@@ -431,11 +356,11 @@ class ModelManager:
             run_id += 1
 
         success_rate = len(valid_results) / attempt if attempt > 0 else 0
+        print(f"\nGeneration Statistics:")
+        print(f"Success rate: {success_rate:.2%}")
+        print(f"Total attempts: {attempt}")
+        print(f"Valid results: {len(valid_results)}")
         if errors:
-            print(f"\nGeneration Statistics:")
-            print(f"Success rate: {success_rate:.2%}")
-            print(f"Total attempts: {attempt}")
-            print(f"Valid results: {len(valid_results)}")
             print(f"First few errors: {errors[:3]}")
 
         return valid_results
