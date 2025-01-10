@@ -449,24 +449,46 @@ def main():
     prompt_mgr = PromptManager(use_cot=(args.stage == "cot"))
     logger = ExperimentLogger()
 
-    # run analysis for specified stage
+    # first run validation set
+    print("\nRunning validation set evaluation...")
+    val_results = []
+    for val_doc in val:
+        print(f"\nValidating on document: {val_doc['title']}")
+        prompt = prompt_mgr.construct_prompt(
+            val_doc["text"],
+            stage=args.stage,
+            train_data=train if args.stage in ["few-shot", "cot"] else None,
+            num_examples=args.num_examples if args.stage in ["few-shot", "cot"] else 0
+        )
+        run_results = model_mgr.generate_with_retries(prompt, args.num_runs)
+        val_results.append({
+            'doc': val_doc,
+            'results': run_results,
+            'aggregated_result': compute_vote_results(run_results)
+        })
+
+    # then run test set
+    print("\nRunning test set prediction...")
+    test_results = []
     for test_doc in test:
         print(f"\nAnalyzing document: {test_doc['title']}")
-
         prompt = prompt_mgr.construct_prompt(
             test_doc["text"],
             stage=args.stage,
             train_data=train if args.stage in ["few-shot", "cot"] else None,
             num_examples=args.num_examples if args.stage in ["few-shot", "cot"] else 0
         )
-
-        # run multiple times for voting
         run_results = model_mgr.generate_with_retries(prompt, args.num_runs)
+        test_results.append({
+            'doc': test_doc,
+            'results': run_results,
+            'aggregated_result': compute_vote_results(run_results)
+        })
 
-        # save results
-        config = vars(args).copy()
-        config["test_doc"] = test_doc["title"]
-        logger.save_experiment(config, prompt, run_results)
+    # save the single configuration results
+    config = vars(args).copy()
+    # use the last prompt as example (they're all the same except for the text)
+    logger.save_experiment(config, val, test, prompt, val_results, test_results)
 
 
 if __name__ == "__main__":
