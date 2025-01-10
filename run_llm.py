@@ -246,7 +246,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """Model manager with improved JSON validation based on structured output techniques."""
+    """Model manager with simple JSON validation."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -255,7 +255,6 @@ class ModelManager:
         self.is_openai = model_name.startswith("gpt-")
 
         if not self.is_openai:
-            # initialize local model with full parameters
             self.model = LLM(
                 model=model_name,
                 trust_remote_code=True,
@@ -269,36 +268,21 @@ class ModelManager:
             )
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
-        """Format chat messages, ensuring JSON output."""
-        # Add JSON specific instructions to system message
-        enhanced_system = (
-            f"{system_msg}\n"
-            "You must respond with ONLY a valid JSON object - no other text. "
-            "Start your response with '{' and end with '}'."
-        )
-
-        # Ensure user message emphasizes JSON requirement
-        enhanced_user = (
-            f"{user_msg}\n"
-            "Remember to ONLY output the JSON object, nothing else."
-        )
-
+        """Format chat messages."""
         return [
-            {"role": "system", "content": enhanced_system},
-            {"role": "user", "content": enhanced_user},
-            # Prefill to ensure JSON start
-            {"role": "assistant", "content": "{"}
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg}
         ]
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Generate a single valid response with JSON enforcement."""
+        """Generate a single valid response."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
             if self.is_openai:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
-                    messages=messages[:-1],  # Don't include prefill for OpenAI
+                    messages=messages,
                     temperature=self.temperature,
                     response_format={"type": "json_object"}
                 )
@@ -313,9 +297,8 @@ class ModelManager:
                     messages=messages,
                     sampling_params=sampling_params
                 )
-                result = "{" + result[0].outputs[0].text  # Add back the prefill
+                result = result[0].outputs[0].text
 
-            # validate with pydantic
             return AuthorshipResult.model_validate_json(result).model_dump()
 
         except Exception as e:
@@ -327,7 +310,6 @@ class ModelManager:
         """Generate multiple responses with retry logic."""
         valid_results = []
         attempts = 0
-        run_id = self.seed + 1000  # base for run seeds
 
         while len(valid_results) < num_runs and attempts < num_runs * max_retries:
             if self.is_openai:
@@ -338,7 +320,6 @@ class ModelManager:
                 valid_results.append(result)
 
             attempts += 1
-            run_id += 1
 
         success_rate = len(valid_results) / attempts if attempts > 0 else 0
         print(f"\ngeneration statistics:")
