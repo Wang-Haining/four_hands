@@ -309,7 +309,8 @@ class ModelManager:
                 enforce_eager=False,
                 max_num_batched_tokens=4096,
                 quantization="gptq" if "70B" in model_name else None,
-                device="cuda"
+                device="cuda",
+                generation_config='auto'
             )
 
             # initialize tokenizer for validation only
