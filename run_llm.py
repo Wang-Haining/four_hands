@@ -19,7 +19,7 @@ import openai
 from lmformatenforcer import JsonSchemaParser
 from lmformatenforcer.integrations.transformers import \
     build_transformers_prefix_allowed_tokens_fn
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from vllm import LLM, SamplingParams
 
 from utils import load_corpus
