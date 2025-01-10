@@ -238,7 +238,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """model manager with robust json handling using lm-format-enforcer."""
+    """model manager with robust json handling using lm-format-enforcer's character-level parsing."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -271,7 +271,7 @@ class ModelManager:
         ]
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """generate a single valid response using lm-format-enforcer for json handling."""
+        """generate a single valid response using character-level json parsing."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
@@ -297,12 +297,19 @@ class ModelManager:
                     sampling_params=sampling_params
                 )
 
-                # parse the output through lm-format-enforcer
                 raw_text = result[0].outputs[0].text
-                parsed_text = self.parser.parse(raw_text)
 
-                # validate with pydantic
-                return AuthorshipResult.model_validate_json(parsed_text).model_dump()
+                # use character-level parsing
+                current_parser = self.parser
+                for char in raw_text:
+                    if char in current_parser.get_allowed_characters():
+                        current_parser = current_parser.add_character(char)
+
+                if not current_parser.can_end():
+                    raise ValueError("Parser could not reach end state")
+
+                # validate the final result
+                return AuthorshipResult.model_validate_json(raw_text).model_dump()
 
         except Exception as e:
             print(f"generation error: {str(e)}")
@@ -333,6 +340,7 @@ class ModelManager:
         print(f"valid results: {len(valid_results)}")
 
         return valid_results
+
 
 def create_example_json(text: str, author: str, analysis: str = "") -> str:
     """Create a valid JSON example for few-shot learning."""
