@@ -236,6 +236,76 @@ Use these linguistic markers to analyze the passage and justify your decision.""
         }
 
 
+def extract_and_parse_json(text: str, debug: bool = False) -> Optional[Dict]:
+    """Extract and parse JSON from text that might contain other content.
+
+    Args:
+        text: String that may contain a JSON object
+        debug: If True, print detailed debug information
+
+    Returns:
+        Parsed JSON dict if successful, None otherwise
+    """
+
+    def debug_print(*args):
+        if debug:
+            print(*args)
+
+    try:
+        # clean up input
+        text = text.strip()
+
+        # find the first opening brace
+        start_idx = text.find('{')
+        if start_idx == -1:
+            debug_print("No JSON object found in text")
+            return None
+
+        text = text[start_idx:]
+
+        # find matching closing brace using brace counting
+        brace_count = 0
+        end_idx = -1
+        for i, char in enumerate(text):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i
+                    break
+
+        if end_idx == -1:
+            debug_print("No matching closing brace found")
+            return None
+
+        # extract the potential JSON object
+        json_str = text[:end_idx + 1]
+
+        # clean the text of control characters except newlines and tabs
+        json_str = ''.join(
+            char for char in json_str if ord(char) >= 32 or char in '\n\r\t')
+
+        # handle Unicode
+        json_str = json_str.encode('utf-8', 'ignore').decode('utf-8')
+
+        # try to parse
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            debug_print("=" * 90)
+            debug_print(f"JSON Parsing Failed. Error: {str(e)}")
+            debug_print("Raw JSON string:")
+            debug_print(json_str)
+            debug_print("=" * 90)
+            return None
+
+    except Exception as e:
+        debug_print("=" * 90)
+        debug_print(f"Unexpected error ({type(e).__name__}): {str(e)}")
+        debug_print("=" * 90)
+        return None
+
 class ModelManager:
     """Manage different LLM backends (OpenAI API and local models)."""
 
@@ -313,38 +383,16 @@ class ModelManager:
 
                 # generate using chat API
                 outputs = self.model.chat(
-                    messages=[chat_messages],  # wrap in list for single request
+                    messages=[chat_messages],
                     sampling_params=sampling_params,
                     use_tqdm=False
                 )
                 raw_response = outputs[0].outputs[0].text
 
-            # clean up and parse response
-            raw_response = raw_response.strip()
+            # parse the response
+            result = extract_and_parse_json(raw_response, debug=True)
 
-            # find the complete JSON object
-            start_idx = raw_response.find('{')
-            if start_idx == -1:
-                print("No JSON object found in response")
-                return None
-
-            raw_response = raw_response[start_idx:]
-            end_idx = raw_response.find('}')
-            if end_idx == -1:
-                print("No closing brace found in response")
-                return None
-
-            # take the first complete JSON object
-            raw_response = raw_response[:end_idx + 1]
-
-            try:
-                result = json.loads(raw_response)
-            except json.JSONDecodeError as e:
-                print("=" * 90)
-                print(f"JSON Parsing Failed. Error: {str(e)}")
-                print("Raw response:")
-                print(raw_response)
-                print("=" * 90)
+            if result is None:
                 return None
 
             if self._is_valid_response(result):
