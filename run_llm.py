@@ -260,13 +260,8 @@ class ModelManager:
                 device="cuda",
             )
 
-            # initialize schema parser with proper config
-            config = CharacterLevelParserConfig(
-                alphabet=COMPLETE_ALPHABET,  # using the default complete alphabet
-                max_consecutive_whitespaces=4,  # reasonable limit for JSON
-                force_json_field_order=True  # ensure consistent output
-            )
-            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema(), config)
+            # initialize json schema parser
+            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
         """format chat messages."""
@@ -386,6 +381,7 @@ class ModelManager:
         print(f"valid results: {len(valid_results)}")
 
         return valid_results
+
 
 def create_example_json(text: str, author: str, analysis: str = "") -> str:
     """Create a valid JSON example for few-shot learning."""
