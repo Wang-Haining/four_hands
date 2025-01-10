@@ -238,7 +238,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """Model manager with robust JSON handling using lm-format-enforcer."""
+    """model manager with robust json handling using lm-format-enforcer."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -260,18 +260,18 @@ class ModelManager:
                 device="cuda",
             )
 
-            # initialize JSON schema parser
+            # initialize json schema parser
             self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
-        """Format chat messages."""
+        """format chat messages."""
         return [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": user_msg}
         ]
 
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Generate a single valid response using lm-format-enforcer for JSON handling."""
+        """generate a single valid response using lm-format-enforcer for json handling."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
@@ -290,23 +290,27 @@ class ModelManager:
                     temperature=self.temperature,
                     max_tokens=8192
                 )
-                # use lm-format-enforcer for local models
-                result = self.model.chat_with_parser(
+
+                # use regular chat first
+                result = self.model.chat(
                     messages=messages,
-                    sampling_params=sampling_params,
-                    parser=self.parser
+                    sampling_params=sampling_params
                 )
-                # return first valid result
-                return AuthorshipResult.model_validate_json(
-                    result[0].outputs[0].text).model_dump()
+
+                # parse the output through lm-format-enforcer
+                raw_text = result[0].outputs[0].text
+                parsed_text = self.parser(raw_text)
+
+                # validate with pydantic
+                return AuthorshipResult.model_validate_json(parsed_text).model_dump()
 
         except Exception as e:
-            print(f"Generation error: {str(e)}")
+            print(f"generation error: {str(e)}")
             return None
 
     def generate_with_retries(self, prompt: Dict[str, str], num_runs: int,
                               max_retries: int = 3) -> List[Dict[str, Any]]:
-        """Generate multiple responses with retry logic."""
+        """generate multiple responses with retry logic."""
         valid_results = []
         attempts = 0
         run_id = self.seed + 1000  # base for run seeds
@@ -323,13 +327,12 @@ class ModelManager:
             run_id += 1
 
         success_rate = len(valid_results) / attempts if attempts > 0 else 0
-        print(f"\nGeneration Statistics:")
-        print(f"Success rate: {success_rate:.2%}")
-        print(f"Total attempts: {attempts}")
-        print(f"Valid results: {len(valid_results)}")
+        print(f"\ngeneration statistics:")
+        print(f"success rate: {success_rate:.2%}")
+        print(f"total attempts: {attempts}")
+        print(f"valid results: {len(valid_results)}")
 
         return valid_results
-
 
 def create_example_json(text: str, author: str, analysis: str = "") -> str:
     """Create a valid JSON example for few-shot learning."""
