@@ -254,16 +254,15 @@ class ModelManager:
             self.model = LLM(
                 model=model_name,
                 trust_remote_code=True,
-                dtype="float16",  # Explicitly set to float16
+                dtype="float16",
                 gpu_memory_utilization=0.85,
                 tensor_parallel_size=2 if "70B" in model_name else 1,
-                enforce_eager=False,  # Changed from True to False
+                # use 2 GPUs for 70B
+                enforce_eager=True,
                 max_num_batched_tokens=4096,
                 quantization="8bit" if "70B" in model_name else None,
+                # add quantization for 70B
                 device="cuda",
-                chat_template_content_format="string",
-                max_model_len=4096,
-                disable_async_processing=True
             )
 
     def _is_valid_response(self, response: Dict[str, Any]) -> bool:
