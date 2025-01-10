@@ -243,8 +243,19 @@ Use these linguistic markers to analyze the passage and justify your decision.""
 
 class AuthorshipResult(BaseModel):
     """Schema for the authorship analysis result."""
-    author: str  # Must be "LX" or "ZZR"
+    author: str = Field(..., pattern="^(LX|ZZR)$")  # Must be "LX" or "ZZR"
     analysis: Optional[str] = None  # Optional for basic/zero-shot stages
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "author": "LX",
+                    "analysis": "Analysis of the writing style..."
+                }
+            ]
+        }
+    }
 
 
 class ModelManager:
@@ -262,6 +273,7 @@ class ModelManager:
             assert "OPENAI_API_KEY" in os.environ, "OpenAI API key not found"
             openai.api_key = os.environ["OPENAI_API_KEY"]
         else:
+            # Initialize vLLM model
             self.model = LLM(
                 model=model_name,
                 trust_remote_code=True,
@@ -274,12 +286,16 @@ class ModelManager:
                 device="cuda"
             )
 
-            # Create JSON schema parser
-            self.parser = JsonSchemaParser(AuthorshipResult.schema())
+            # Initialize tokenizer separately
+            from transformers import AutoTokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+            # Create JSON schema parser using Pydantic v2 method
+            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
 
             # Build prefix function for the tokenizer
             self.prefix_function = build_transformers_prefix_allowed_tokens_fn(
-                self.model.tokenizer,
+                self.tokenizer,
                 self.parser
             )
 
@@ -288,7 +304,7 @@ class ModelManager:
         """Format prompts into chat messages."""
         messages = [
             {"role": "system",
-             "content": f"{prompt_dict['system']}\n\nResponse must follow this JSON schema:\n{AuthorshipResult.schema_json()}"},
+             "content": f"{prompt_dict['system']}\n\nResponse must follow this JSON schema:\n{AuthorshipResult.model_json_schema()}"},
             {"role": "user", "content": prompt_dict["user"]}
         ]
         return messages
@@ -315,15 +331,14 @@ class ModelManager:
                 outputs = self.model.chat(
                     messages=self._format_chat_messages(prompt_dict),
                     sampling_params=sampling_params,
-                    prefix_allowed_tokens_fn=self.prefix_function,
                     use_tqdm=False
                 )
                 raw_response = outputs[0].outputs[0].text
 
             try:
                 # Parse into Pydantic model first for validation
-                result = AuthorshipResult.parse_raw(raw_response)
-                return result.dict()
+                result = AuthorshipResult.model_validate_json(raw_response)
+                return result.model_dump()
             except Exception as e:
                 print(f"Validation error: {str(e)}")
                 return None
