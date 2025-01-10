@@ -308,7 +308,7 @@ class ModelManager:
                 tensor_parallel_size=2 if "70B" in model_name else 1,
                 enforce_eager=False,
                 max_num_batched_tokens=4096,
-                quantization="8bit" if "70B" in model_name else None,
+                quantization="gptq" if "70B" in model_name else None,
                 device="cuda"
             )
 
