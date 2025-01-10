@@ -136,19 +136,21 @@ class AuthorshipResult(BaseModel):
 
 
 class PromptManager:
-    """Enhanced prompt manager that maintains all original features with better JSON handling."""
+    """Enhanced prompt manager with clearer response format instructions."""
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
-        self.result_schema = AuthorshipResult.model_json_schema()
 
-        # base system prompt with JSON emphasis
+        # base system prompt with clear response format
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-        stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
-        to determine their authorship.
+stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
+to determine their authorship.
 
-        IMPORTANT: You must categorize the author as EITHER 'LX' (Lu Xun) OR 'ZZR' (Zhou Zuoren).
-        No other author attributions are possible or allowed."""
+Required response format:
+{
+    "author": "LX" or "ZZR",  // Must be exactly one of these two values
+    "analysis": "your analysis here"  // Optional explanation
+}"""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
@@ -210,37 +212,28 @@ determine the likely author."""
     def construct_prompt(self, text: str, stage: str,
                          train_data: Optional[List[Dict]] = None,
                          num_examples: int = 0) -> Dict[str, str]:
-        """Construct the full prompt maintaining all original features."""
-        # start with the schema reminder
-        prompt_parts = [
-            f"You MUST answer using the following json schema: {AuthorshipResult.schema_json()}",
-            self._get_basic()
-        ]
+        """Construct the full prompt with clear response format."""
+        prompt_parts = [self._get_basic()]
 
-        # add stage-specific content
         if stage in ["zero-shot", "few-shot", "cot"]:
             prompt_parts.append("Linguistic Features to Consider:")
             prompt_parts.append(self._get_knowledge())
 
-        # add examples for few-shot and cot
         if stage in ["few-shot", "cot"] and train_data and num_examples > 0:
             prompt_parts.append("Reference Examples:")
             prompt_parts.append(self._get_examples(train_data, num_examples))
 
-        # add stage-specific instructions
         prompt_parts.append(self._get_stage_instructions(stage))
 
-        # add the text and final JSON reminder
         prompt_parts.extend([
             "Text to Analyze:",
             text,
+            "",
+            "Respond with a JSON object ONLY. Your response must include an 'author' field with EXACTLY 'LX' or 'ZZR' as the value.",
         ])
 
-        # build final prompt
-        system_prompt = f"{self.system_msg}"
-
         return {
-            "system": system_prompt,
+            "system": self.system_msg,
             "user": "\n\n".join(prompt_parts)
         }
 
