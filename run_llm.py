@@ -299,7 +299,7 @@ class ModelManager:
 
                 # parse the output through lm-format-enforcer
                 raw_text = result[0].outputs[0].text
-                parsed_text = self.parser(raw_text)
+                parsed_text = self.parser.parse(raw_text)
 
                 # validate with pydantic
                 return AuthorshipResult.model_validate_json(parsed_text).model_dump()
