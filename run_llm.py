@@ -291,6 +291,7 @@ class ModelManager:
                     sampling_params=sampling_params
                 )
                 result = result[0].outputs[0].text
+                print(result)
 
             return AuthorshipResult.model_validate_json(result).model_dump()
 
