@@ -5,6 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List, Dict, Any
+import seaborn as sns
 
 
 class ResultAnalyzer:
@@ -19,119 +20,159 @@ class ResultAnalyzer:
             with result_file.open('r', encoding='utf-8') as f:
                 try:
                     data = json.load(f)
-                    # Extract key metrics
+                    # extract config and validation metrics
                     result = {
                         'model': data['config']['model'].split('/')[-1],
                         'stage': data['config']['stage'],
                         'temperature': data['config']['temperature'],
-                        'test_doc': data['config']['test_doc'],
-                        'predicted_author': data['aggregated_result']['author'],
-                        'confidence': data['aggregated_result']['confidence'],
-                        'vote_distribution': data['aggregated_result'][
-                            'vote_distribution']
+                        'accuracy': data['validation_results']['metrics']['accuracy'],
+                        'precision': data['validation_results']['metrics']['precision'],
+                        'recall': data['validation_results']['metrics']['recall'],
+                        'f1': data['validation_results']['metrics']['f1'],
+                        'confusion_matrix': data['validation_results']['metrics'][
+                            'confusion_matrix'],
+                        'test_predictions': data['test_results']['document_predictions']
                     }
                     self.results_data.append(result)
                 except Exception as e:
                     print(f"Error loading {result_file}: {str(e)}")
 
-    def create_summary_table(self) -> pd.DataFrame:
-        """Create a summary table of results."""
+    def create_summary_table(self) -> Dict[str, pd.DataFrame]:
+        """Create a summary table of validation results."""
         df = pd.DataFrame(self.results_data)
 
-        # pivot table for better visualization
-        summary = pd.pivot_table(
-            df,
-            values='confidence',
-            index=['model', 'stage'],
-            columns=['temperature'],
-            aggfunc='mean'
-        ).round(3)
+        # create pivot tables for each metric
+        metrics = ['accuracy', 'precision', 'recall', 'f1']
+        summaries = {}
 
-        return summary
+        for metric in metrics:
+            summaries[metric] = pd.pivot_table(
+                df,
+                values=metric,
+                index=['model', 'stage'],
+                columns=['temperature'],
+                aggfunc='mean'
+            ).round(3)
 
-    def plot_heatmap(self, output_file: str = "heatmap.png"):
-        """Generate heatmap visualization of results."""
+        return summaries
+
+    def plot_heatmap(self, output_dir: Path):
+        """Generate heatmap visualizations for each metric."""
+        df = pd.DataFrame(self.results_data)
+        metrics = ['accuracy', 'precision', 'recall', 'f1']
+
+        for metric in metrics:
+            # create pivot table for heatmap
+            heatmap_data = pd.pivot_table(
+                df,
+                values=metric,
+                index=['model', 'stage'],
+                columns=['temperature'],
+                aggfunc='mean'
+            )
+
+            plt.figure(figsize=(12, 8))
+            sns.heatmap(
+                heatmap_data,
+                annot=True,
+                cmap='YlOrRd',
+                fmt='.3f',
+                cbar_kws={'label': metric.capitalize()}
+            )
+
+            plt.title(f'Model Performance Heatmap - {metric.capitalize()}')
+            plt.tight_layout()
+            plt.savefig(output_dir / f"heatmap_{metric}.png")
+            plt.close()
+
+    def plot_confusion_matrices(self, output_dir: Path):
+        """Generate confusion matrix plots for best configurations."""
         df = pd.DataFrame(self.results_data)
 
-        # create pivot table for heatmap
-        heatmap_data = pd.pivot_table(
-            df,
-            values='confidence',
-            index=['model', 'stage'],
-            columns=['temperature'],
-            aggfunc='mean'
-        )
+        # find best configuration based on F1 score
+        best_config = df.loc[df['f1'].idxmax()]
 
-        # set up the matplotlib figure
-        plt.figure(figsize=(12, 8))
+        # plot confusion matrix
+        plt.figure(figsize=(8, 6))
+        conf_matrix = np.array(best_config['confusion_matrix'])
 
-        # create heatmap
         sns.heatmap(
-            heatmap_data,
+            conf_matrix,
             annot=True,
-            cmap='YlOrRd',
-            fmt='.3f',
-            cbar_kws={'label': 'Confidence'}
+            fmt='d',
+            cmap='Blues',
+            xticklabels=['LX', 'ZZR'],
+            yticklabels=['LX', 'ZZR']
         )
 
-        plt.title('Model Performance Heatmap')
+        plt.title(f'Confusion Matrix for Best Configuration\n' +
+                  f"({best_config['model']}, {best_config['stage']}, " +
+                  f"temp={best_config['temperature']})")
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
         plt.tight_layout()
-        plt.savefig(output_file)
+        plt.savefig(output_dir / "best_confusion_matrix.png")
         plt.close()
 
-    def plot_performance_comparison(self, output_file: str = "performance.png"):
-        """Generate bar plot comparing model performances across stages."""
+    def create_test_predictions_table(self) -> pd.DataFrame:
+        """Create a table of test set predictions for the best configuration."""
         df = pd.DataFrame(self.results_data)
+        best_config = df.loc[df['f1'].idxmax()]
 
-        plt.figure(figsize=(15, 8))
+        # extract test predictions from best configuration
+        test_preds = best_config['test_predictions']
 
-        # create grouped bar plot
-        sns.barplot(
-            data=df,
-            x='stage',
-            y='confidence',
-            hue='model',
-            ci='sd'
-        )
+        # convert to DataFrame
+        test_df = pd.DataFrame([
+            {
+                'document': doc,
+                'predicted_author': data['predicted_author'],
+                'confidence': data['confidence'],
+                'lx_votes': data['vote_distribution']['LX'],
+                'zzr_votes': data['vote_distribution']['ZZR']
+            }
+            for doc, data in test_preds.items()
+        ])
 
-        plt.title('Model Performance Comparison Across Stages')
-        plt.xlabel('Stage')
-        plt.ylabel('Confidence')
-        plt.xticks(rotation=45)
-        plt.legend(title='Model', bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        plt.savefig(output_file)
-        plt.close()
+        return test_df
 
-    def generate_latex_table(self) -> str:
-        """Generate LaTeX table of results."""
-        summary = self.create_summary_table()
+    def generate_latex_tables(self) -> Dict[str, str]:
+        """Generate LaTeX tables for all metrics."""
+        summaries = self.create_summary_table()
+        latex_tables = {}
 
-        # convert to LaTeX format
-        latex_table = summary.to_latex(
-            float_format="%.3f",
-            caption="Model Performance Across Different Configurations",
-            label="tab:results"
-        )
+        for metric, summary in summaries.items():
+            latex_tables[metric] = summary.to_latex(
+                float_format="%.3f",
+                caption=f"Model Performance ({metric.capitalize()}) Across Configurations",
+                label=f"tab:results_{metric}"
+            )
 
-        return latex_table
+        return latex_tables
 
     def save_analysis(self, output_dir: str = "analysis_output"):
         """Save all analysis outputs."""
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # save summary table
-        summary = self.create_summary_table()
-        summary.to_csv(output_path / "summary_table.csv")
+        # save summary tables
+        summaries = self.create_summary_table()
+        for metric, summary in summaries.items():
+            summary.to_csv(output_path / f"summary_{metric}.csv")
 
-        # save LaTeX table
-        with (output_path / "latex_table.tex").open('w') as f:
-            f.write(self.generate_latex_table())
+        # save test predictions
+        test_preds = self.create_test_predictions_table()
+        test_preds.to_csv(output_path / "test_predictions.csv", index=False)
+
+        # save LaTeX tables
+        latex_tables = self.generate_latex_tables()
+        for metric, latex in latex_tables.items():
+            with (output_path / f"latex_table_{metric}.tex").open('w') as f:
+                f.write(latex)
 
         # generate plots
-        self.plot_heatmap(str(output_path / "heatmap.png"))
-        self.plot_performance_comparison(str(output_path / "performance.png"))
+        self.plot_heatmap(output_path)
+        self.plot_confusion_matrices(output_path)
 
         # generate detailed report
         report = self.generate_report()
@@ -146,23 +187,31 @@ class ResultAnalyzer:
         report.append("Authorship Analysis Grid Search Results")
         report.append("=" * 50)
 
-        # overall best configuration
-        best_config = df.loc[df['confidence'].idxmax()]
-        report.append("\nBest Overall Configuration:")
+        # best configuration based on F1 score
+        best_config = df.loc[df['f1'].idxmax()]
+        report.append("\nBest Overall Configuration (based on F1 score):")
         report.append(f"Model: {best_config['model']}")
         report.append(f"Stage: {best_config['stage']}")
         report.append(f"Temperature: {best_config['temperature']}")
-        report.append(f"Confidence: {best_config['confidence']:.3f}")
+        report.append(f"F1 Score: {best_config['f1']:.3f}")
+        report.append(f"Accuracy: {best_config['accuracy']:.3f}")
+        report.append(f"Precision: {best_config['precision']:.3f}")
+        report.append(f"Recall: {best_config['recall']:.3f}")
 
         # performance by model
-        report.append("\nPerformance by Model:")
-        model_perf = df.groupby('model')['confidence'].agg(['mean', 'std']).round(3)
+        report.append("\nPerformance by Model (F1 Score):")
+        model_perf = df.groupby('model')['f1'].agg(['mean', 'std']).round(3)
         report.append(model_perf.to_string())
 
         # performance by stage
-        report.append("\nPerformance by Stage:")
-        stage_perf = df.groupby('stage')['confidence'].agg(['mean', 'std']).round(3)
+        report.append("\nPerformance by Stage (F1 Score):")
+        stage_perf = df.groupby('stage')['f1'].agg(['mean', 'std']).round(3)
         report.append(stage_perf.to_string())
+
+        # test set predictions for best configuration
+        test_preds = self.create_test_predictions_table()
+        report.append("\nTest Set Predictions (Best Configuration):")
+        report.append(test_preds.to_string())
 
         return "\n".join(report)
 
@@ -174,8 +223,11 @@ def main():
     # print summary to console
     print("\nAnalysis Summary:")
     print("=" * 50)
-    print("\nSummary Table:")
-    print(analyzer.create_summary_table())
+    print("\nSummary Tables:")
+    summaries = analyzer.create_summary_table()
+    for metric, summary in summaries.items():
+        print(f"\n{metric.upper()} Summary:")
+        print(summary)
     print("\nAnalysis outputs have been saved to the 'analysis_output' directory.")
 
 

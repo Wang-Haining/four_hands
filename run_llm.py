@@ -20,6 +20,41 @@ import openai
 from utils import load_corpus
 
 
+def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
+    """Evaluate predictions against ground truth."""
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+    from sklearn.metrics import confusion_matrix
+    import numpy as np
+
+    # extract predictions and true labels
+    y_true = [doc['author'].upper() for doc in ground_truth]
+    y_pred = [pred['aggregated_result']['author'] for pred in predictions]
+
+    # calculate metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred,
+                                                               average='weighted')
+
+    # calculate confusion matrix
+    labels = ["LX", "ZZR"]
+    conf_matrix = confusion_matrix(y_true, y_pred, labels=labels)
+
+    # format confusion matrix as dict for JSON serialization
+    conf_matrix_dict = {
+        'matrix': conf_matrix.tolist(),
+        'labels': labels
+    }
+
+    return {
+        'accuracy': float(accuracy),
+        'precision': float(precision),
+        'recall': float(recall),
+        'f1': float(f1),
+        'confusion_matrix': conf_matrix_dict,
+        'support': {label: sum(1 for y in y_true if y == label) for label in labels}
+    }
+
+
 class ExperimentLogger:
     """Handle logging of experimental results."""
 
@@ -32,27 +67,37 @@ class ExperimentLogger:
         model_short = config['model'].split('/')[-1]
         return (f"{model_short}"
                 f"_stage-{config['stage']}"
-                f"_temp-{config['temperature']}"
-                f"_doc-{config['test_doc'].replace(' ', '_')}"
-                f"_runs-{config['num_runs']}"
-                f"_seed-{config['seed']}")
+                f"_temp-{config['temperature']}")
 
-    def save_experiment(self, config: Dict, prompt_dict: Dict[str, str], results: List[Dict]):
-        """Save single experiment results."""
+    def save_experiment(self, config: Dict, val_docs: List[Dict],
+                        test_docs: List[Dict], prompt_dict: Dict[str, str],
+                        val_results: List[Dict], test_results: List[Dict]):
+        """Save experiment results including validation and test predictions."""
         experiment_id = self.get_experiment_id(config)
+
+        # evaluate on validation set
+        val_metrics = evaluate_predictions(val_results, val_docs)
+
+        # organize results for each test document
+        test_predictions = []
+        for doc, result in zip(test_docs, test_results):
+            test_predictions.append({
+                'title': doc['title'],
+                'prediction': result
+            })
 
         # organize experiment data
         experiment_data = {
             "config": config,
-            "prompt": {
-                "system": prompt_dict["system"],
-                "user": prompt_dict["user"],
+            "prompt": prompt_dict,
+            "validation": {
+                "metrics": val_metrics,
+                "predictions": val_results
             },
-            "individual_results": results,
-            "aggregated_result": compute_vote_results(results)
+            "test_predictions": test_predictions
         }
 
-        # save to JSON
+        # save
         output_file = self.output_dir / f"{experiment_id}.json"
         with output_file.open('w', encoding='utf-8') as f:
             json.dump(experiment_data, f, ensure_ascii=False, indent=2)
@@ -66,13 +111,17 @@ class ExperimentLogger:
         print(f"Model: {data['config']['model']}")
         print(f"Stage: {data['config']['stage']}")
         print(f"Temperature: {data['config']['temperature']}")
-        print(f"Sample Size: {len(data['individual_results'])}")
-        print("\nResults:")
-        print(f"Predicted Author: {data['aggregated_result']['author']}")
-        print(f"Confidence: {data['aggregated_result']['confidence']:.2%}")
-        print("\nVote Distribution:")
-        for author, votes in data['aggregated_result']['vote_distribution'].items():
-            print(f"{author}: {votes:.2%}")
+
+        print("\nValidation Metrics:")
+        metrics = data['validation']['metrics']
+        print(f"Accuracy: {metrics['accuracy']:.3f}")
+        print(f"Precision: {metrics['precision']:.3f}")
+        print(f"Recall: {metrics['recall']:.3f}")
+        print(f"F1 Score: {metrics['f1']:.3f}")
+
+        print("\nClass Distribution:")
+        for label, count in metrics['support'].items():
+            print(f"{label}: {count}")
 
 
 class PromptManager:
