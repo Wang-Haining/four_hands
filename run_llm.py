@@ -13,13 +13,13 @@ import os
 import random
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import openai
 from lmformatenforcer import JsonSchemaParser
-from lmformatenforcer.integrations.transformers import \
-    build_transformers_prefix_allowed_tokens_fn
 from pydantic import BaseModel, Field
+from sklearn.metrics import (accuracy_score, confusion_matrix,
+                             precision_recall_fscore_support)
 from vllm import LLM, SamplingParams
 
 from utils import load_corpus
@@ -27,10 +27,6 @@ from utils import load_corpus
 
 def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
     """Evaluate predictions against ground truth."""
-    import numpy as np
-    from sklearn.metrics import (accuracy_score, confusion_matrix,
-                                 precision_recall_fscore_support)
-
     # extract predictions and true labels
     y_true = [doc['author'].upper() for doc in ground_truth]
     y_pred = [pred['aggregated_result']['author'] for pred in predictions]
@@ -62,7 +58,6 @@ def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> D
 
 class ExperimentLogger:
     """Handle logging of experimental results."""
-
     def __init__(self):
         self.output_dir = Path("results")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -129,15 +124,9 @@ class ExperimentLogger:
             print(f"{label}: {count}")
 
 
-from typing import Dict, List, Optional
-import json
-import random
-from pydantic import BaseModel, Field
-
-
 class AuthorshipResult(BaseModel):
     """Schema for the authorship analysis result."""
-    author: str = Field(..., pattern="^(LX|ZZR)$")
+    author: str = Literal['LX', 'ZZR']
     analysis: Optional[str] = None
 
 
@@ -151,73 +140,54 @@ class PromptManager:
         # base system prompt with JSON emphasis
         self.system_msg = """You are an expert in Chinese literature, specializing in 
 stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
-to determine their authorship.
-
-CRITICAL INSTRUCTIONS:
-1. You must respond ONLY with a valid JSON object
-2. Do not include ANY text before or after the JSON
-3. The JSON must exactly follow the schema provided
-4. The 'author' field MUST be either "LX" or "ZZR"
-"""
+to determine their authorship."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
         return """Analyze the writing styles of the input texts, disregarding 
 differences in topic and content, and reason based on linguistic features 
-such as character and punctuation frequency."""
+such as character frequency."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
         return """Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 
 足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫.
 
-Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随.
-
-Use these linguistic markers to analyze the passage and justify your decision."""
-
-    def _create_json_example(self, text: str, author: str, analysis: str = "") -> str:
-        """Create a valid JSON example for few-shot learning."""
-        example = AuthorshipResult(author=author, analysis=analysis)
-        return json.dumps(example.model_dump(), ensure_ascii=False, indent=2)
+Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随."""
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
         """Generate few-shot examples with proper JSON formatting."""
-        authors = ["lx", "zzr"]
-        examples_per_author = {author: [] for author in authors}
+        # get balanced examples for both authors
+        lx_examples = [d for d in train_data if d['author'].upper() == 'LX']
+        zzr_examples = [d for d in train_data if d['author'].upper() == 'ZZR']
 
-        # organize examples by author
-        for d in train_data:
-            if d["author"].lower() in authors:
-                examples_per_author[d["author"].lower()].append(d)
+        # ensure we get equal numbers of each author
+        examples_per_author = num_examples // 2
+        selected_lx = random.sample(lx_examples, examples_per_author)
+        selected_zzr = random.sample(zzr_examples, examples_per_author)
 
-        # select balanced examples
-        selected_examples = []
-        for author in authors:
-            if examples_per_author[author]:
-                selected_examples.append(random.choice(examples_per_author[author]))
+        # if num_examples is odd, randomly add one more example
+        if num_examples % 2 == 1:
+            extra_example = random.choice(random.choice([lx_examples, zzr_examples]))
+            selected_examples = selected_lx + selected_zzr + [extra_example]
+        else:
+            selected_examples = selected_lx + selected_zzr
 
-        # fill remaining slots
-        remaining_slots = num_examples - len(selected_examples)
-        if remaining_slots > 0:
-            all_examples = [ex for exs in examples_per_author.values() for ex in exs]
-            if all_examples:
-                selected_examples.extend(random.sample(all_examples,
-                                                       min(remaining_slots,
-                                                           len(all_examples))))
+        # shuffle the examples
+        random.shuffle(selected_examples)
 
-        # format examples with JSON
+        # format examples
         formatted_examples = []
-        for i, ex in enumerate(selected_examples):
-            json_output = self._create_json_example(
-                text=ex['text'],
-                author=ex['author'].upper(),
-                analysis=f"Analysis for example {i + 1}"
+        for example in selected_examples:
+            json_response = create_example_json(
+                text="",  # we don't include the text in the response
+                author=example['author'].upper()
             )
             formatted_examples.append(
-                f"Example {i + 1}:\nText: {ex['text']}\nOutput: {json_output}\n"
+                f"Text:\n{example['text']}\n\nResponse:\n{json_response}"
             )
 
-        return "\n".join(formatted_examples)
+        return "\n\n".join(formatted_examples)
 
     def _get_stage_instructions(self, stage: str) -> str:
         """Get stage-specific instructions."""
@@ -225,30 +195,9 @@ Use these linguistic markers to analyze the passage and justify your decision.""
             return """Think through your analysis step by step. Consider the frequency 
 of characteristic markers, sentence patterns, and stylistic choices. Include your 
 reasoning in the 'analysis' field of your JSON response."""
-        elif stage == "zero-shot":
-            return """Use the provided linguistic features to make your determination. 
-Base your decision on concrete stylistic evidence."""
-        elif stage == "few-shot":
-            return """Reference the examples provided, but make your own determination 
-based on the stylistic features present in the text."""
-        else:  # basic
-            return """Focus on basic stylistic patterns and linguistic choices to 
+        else:  # for basic, zero-shot, and few-shot scenarios
+            return """Focus on low-level linguistic patterns and word choices to 
 determine the likely author."""
-
-    def _get_output_format(self, stage: str) -> str:
-        """Get the expected output format with schema."""
-        basic_schema = {
-            "author": "LX or ZZR (required)",
-            "analysis": "Detailed analysis (optional for basic/zero-shot stages)"
-        }
-
-        if stage == "cot":
-            return json.dumps({
-                "author": "LX or ZZR (required)",
-                "analysis": "Your step-by-step reasoning (required for CoT)"
-            }, indent=2)
-        else:
-            return json.dumps(basic_schema, indent=2)
 
     def construct_prompt(self, text: str, stage: str,
                          train_data: Optional[List[Dict]] = None,
@@ -256,7 +205,7 @@ determine the likely author."""
         """Construct the full prompt maintaining all original features."""
         # start with the schema reminder
         prompt_parts = [
-            f"Required JSON format:\n{self._get_output_format(stage)}",
+            f"You MUST answer using the following json schema: {AuthorshipResult.schema_json()}",
             self._get_basic()
         ]
 
@@ -277,11 +226,10 @@ determine the likely author."""
         prompt_parts.extend([
             "Text to Analyze:",
             text,
-            "\nREMINDER: Respond ONLY with a valid JSON object following the schema."
         ])
 
         # build final prompt
-        system_prompt = f"{self.system_msg}\n\nSchema:\n{json.dumps(self.result_schema, indent=2)}"
+        system_prompt = f"{self.system_msg}"
 
         return {
             "system": system_prompt,
@@ -290,7 +238,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """Model manager with robust JSON handling and multiple generation attempts."""
+    """Model manager with robust JSON handling using lm-format-enforcer."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -307,51 +255,23 @@ class ModelManager:
                 gpu_memory_utilization=0.85,
                 tensor_parallel_size=2 if "70B" in model_name else 1,
                 enforce_eager=False,
-                max_num_batched_tokens=4096,
+                max_num_batched_tokens=8192,
                 quantization="gptq" if "70B" in model_name else None,
                 device="cuda",
-                generation_config='auto'
             )
-
-            # initialize tokenizer for validation only
-            from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
             # initialize JSON schema parser
             self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
 
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
-        """Format chat messages with JSON schema."""
-        schema_str = json.dumps(AuthorshipResult.model_json_schema(), indent=2)
-        enhanced_system = f"{system_msg}\n\nOutput must match this JSON schema:\n{schema_str}"
-
+        """Format chat messages."""
         return [
-            {"role": "system", "content": enhanced_system},
+            {"role": "system", "content": system_msg},
             {"role": "user", "content": user_msg}
         ]
 
-    def _clean_response(self, text: str) -> str:
-        """Clean the response text to extract valid JSON."""
-        # remove any markdown code block markers
-        text = text.replace('```json', '').replace('```', '')
-
-        # remove any leading/trailing whitespace
-        text = text.strip()
-
-        # remove common prefixes that models might add
-        prefixes = [
-            "Here's the JSON response:",
-            "The JSON response is:",
-            "Response:",
-        ]
-        for prefix in prefixes:
-            if text.startswith(prefix):
-                text = text[len(prefix):].strip()
-
-        return text
-
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Generate a single valid response."""
+        """Generate a single valid response using lm-format-enforcer for JSON handling."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
@@ -363,28 +283,22 @@ class ModelManager:
                     response_format={"type": "json_object"}
                 )
                 result = response.choices[0].message.content
+                # validate with pydantic
+                return AuthorshipResult.model_validate_json(result).model_dump()
             else:
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
-                    max_tokens=1024,
-                    stop=["\n\n", "```"]  # Stop at double newlines or code blocks
+                    max_tokens=8192
                 )
-                outputs = self.model.chat(
+                # use lm-format-enforcer for local models
+                result = self.model.chat_with_parser(
                     messages=messages,
-                    sampling_params=sampling_params
+                    sampling_params=sampling_params,
+                    parser=self.parser
                 )
-                result = self._clean_response(outputs[0].outputs[0].text)
-
-            # validate against schema
-            try:
-                # first try parsing as JSON
-                parsed = json.loads(result)
-                # then validate with Pydantic
-                validated = AuthorshipResult.model_validate(parsed)
-                return validated.model_dump()
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"Validation error: {str(e)}")
-                return None
+                # return first valid result
+                return AuthorshipResult.model_validate_json(
+                    result[0].outputs[0].text).model_dump()
 
         except Exception as e:
             print(f"Generation error: {str(e)}")
@@ -395,10 +309,9 @@ class ModelManager:
         """Generate multiple responses with retry logic."""
         valid_results = []
         attempts = 0
-        run_id = self.seed + 1000  # Base for run seeds
+        run_id = self.seed + 1000  # base for run seeds
 
         while len(valid_results) < num_runs and attempts < num_runs * max_retries:
-            # use a different seed for each attempt
             if self.is_openai:
                 openai.api_key = os.environ["OPENAI_API_KEY"]
 
