@@ -238,7 +238,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """model manager with proper character-level json parsing."""
+    """model manager with simple json validation and retry logic."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -260,9 +260,6 @@ class ModelManager:
                 device="cuda",
             )
 
-            # initialize json schema parser
-            self.parser = JsonSchemaParser(AuthorshipResult.model_json_schema())
-
     def _format_messages(self, system_msg: str, user_msg: str) -> List[Dict[str, str]]:
         """format chat messages."""
         return [
@@ -270,52 +267,8 @@ class ModelManager:
             {"role": "user", "content": user_msg}
         ]
 
-    def _extract_json_substring(self, text: str) -> str:
-        """extract the json part from the text, handling potential prefixes/suffixes."""
-        try:
-            # find outermost json object
-            stack = []
-            start = None
-
-            for i, char in enumerate(text):
-                if char == '{' and not stack:
-                    start = i
-                if char == '{':
-                    stack.append(char)
-                elif char == '}':
-                    stack.pop()
-                    if not stack and start is not None:
-                        # found complete json
-                        return text[start:i + 1]
-
-            raise ValueError("No complete JSON object found")
-        except Exception as e:
-            print(f"json extraction error: {str(e)}")
-            raise
-
-    def _parse_with_character_level_parser(self, text: str) -> bool:
-        """parse text using character level parser, returning success status."""
-        current_parser = self.parser
-
-        try:
-            for char in text:
-                allowed_chars = current_parser.get_allowed_characters()
-                if char not in allowed_chars:
-                    print(f"character '{char}' not allowed. allowed: {allowed_chars}")
-                    return False
-
-                # get new parser state
-                current_parser = current_parser.add_character(char)
-
-            # check if we reached a valid end state
-            return current_parser.can_end()
-
-        except Exception as e:
-            print(f"character-level parsing error: {str(e)}")
-            return False
-
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """generate a single valid response using proper character-level json parsing."""
+        """generate a single valid response."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
@@ -327,30 +280,19 @@ class ModelManager:
                     response_format={"type": "json_object"}
                 )
                 result = response.choices[0].message.content
-                json_str = self._extract_json_substring(result)
-                return AuthorshipResult.model_validate_json(json_str).model_dump()
             else:
                 sampling_params = SamplingParams(
                     temperature=self.temperature,
                     max_tokens=8192
                 )
 
-                # get raw output
                 result = self.model.chat(
                     messages=messages,
                     sampling_params=sampling_params
                 )
-                raw_text = result[0].outputs[0].text
+                result = result[0].outputs[0].text
 
-                # extract json part
-                json_str = self._extract_json_substring(raw_text)
-
-                # parse character by character
-                if not self._parse_with_character_level_parser(json_str):
-                    raise ValueError("character-level parsing failed")
-
-                # if we got here, the json is valid according to our schema
-                return AuthorshipResult.model_validate_json(json_str).model_dump()
+            return AuthorshipResult.model_validate_json(result).model_dump()
 
         except Exception as e:
             print(f"generation error: {str(e)}")
