@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import openai
-from lmformatenforcer import JsonSchemaParser
 from pydantic import BaseModel, Field
 from sklearn.metrics import (accuracy_score, confusion_matrix,
                              precision_recall_fscore_support)
@@ -230,7 +229,7 @@ determine the likely author."""
             "Text to Analyze:",
             text,
             "",
-            "Respond with a JSON object ONLY. Your response must include an 'author' field with EXACTLY 'LX' or 'ZZR' as the value.",
+            "Respond with a JSON object ONLY. Your response must include an 'author' field with EXACTLY 'Lu Xun' or 'Zhou Zuoren' as the value.",
         ])
 
         return {
@@ -339,7 +338,7 @@ def compute_vote_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     Compute aggregated results from multiple runs.
     Assumes all results are valid (no ERROR states).
     """
-    possible_authors = ["LX", "ZZR"]
+    possible_authors = ["Lu Xun", "Zhou Zuoren"]
 
     # count votes
     vote_counts = Counter(result["author"] for result in results)
