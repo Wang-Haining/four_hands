@@ -134,46 +134,36 @@ class AuthorshipResult(BaseModel):
     )
 
 
+# First, let's remove the AuthorshipResult class since we no longer need Pydantic validation
+# and modify the PromptManager class to use the new format
+
 class PromptManager:
-    """Enhanced prompt manager with clearer response format instructions."""
+    """Enhanced prompt manager with simpler prediction format."""
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
 
-        # base system prompt with clear response format
+        # Updated system prompt with new format instructions
         self.system_msg = """You are an expert in Chinese literature, specializing in 
         stylometric analysis. Your task is to analyze passages from the disputed work 
         哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and 
         Zhou Zuoren.
 
-        Follow these strict rules when you respond:
+        You should analyze the text and make the prediction at the end.
+        Your final prediction must be wrapped in special tags:
+        {PREDICTION_START}Lu Xun{PREDICTION_END}
+        or
+        {PREDICTION_START}Zhou Zuoren{PREDICTION_END}
 
-1. You must output a single valid JSON object **and nothing else**—no Markdown,
-   no code fences, and no plain text outside the JSON.
-2. Your JSON object must have exactly two keys:
-   {
-     "author": "Lu Xun" or "Zhou Zuoren",
-     "analysis": "Your reasoning here."
-   }
-3. Do NOT include any additional fields besides "author" and "analysis."
-4. Do NOT wrap your output in triple backticks or any other format.
-5. If you have any reasoning or explanation, place it entirely in the "analysis" field.
-6. Do not add any text before or after the JSON braces. We will parse your output 
-   with a strict JSON parser, so any extra text or formatting will cause an error.
-
-Remember:
-- "author" must be exactly one of "Lu Xun" or "Zhou Zuoren."
-- "analysis" can contain any free-form text for explanation, but must be valid 
-  JSON string content.
-- Any violation of these rules invalidates your output.
-
-Now, please follow these instructions carefully."""
+        The prediction must be exactly one of these two authors, with no additional text 
+        within the prediction tags."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
         return """Analyze the writing styles of the input texts, disregarding 
         differences in topic and content, and reason based on linguistic features 
-        such as character frequency."""
+        such as character frequency. End your analysis with your prediction wrapped 
+        in {PREDICTION_START} and {PREDICTION_END} tags."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
@@ -183,54 +173,39 @@ Now, please follow these instructions carefully."""
 Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随."""
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
-        """Generate few-shot examples with proper JSON formatting."""
+        """Generate examples with new prediction format."""
         # get balanced examples for both authors
         lx_examples = [d for d in train_data if d['author'].upper() == 'LX']
         zzr_examples = [d for d in train_data if d['author'].upper() == 'ZZR']
 
-        # ensure we get equal numbers of each author
         examples_per_author = num_examples // 2
         selected_lx = random.sample(lx_examples, examples_per_author)
         selected_zzr = random.sample(zzr_examples, examples_per_author)
 
-        # if num_examples is odd, randomly add one more example
         if num_examples % 2 == 1:
             extra_example = random.choice(random.choice([lx_examples, zzr_examples]))
             selected_examples = selected_lx + selected_zzr + [extra_example]
         else:
             selected_examples = selected_lx + selected_zzr
 
-        # shuffle the examples
         random.shuffle(selected_examples)
 
-        # format examples
+        # format examples with new prediction format
         formatted_examples = []
         for example in selected_examples:
-            json_response = create_example_json(
-                text="",  # we don't include the text in the response
-                author=example['author'].upper()
-            )
+            author = "Lu Xun" if example['author'].upper() == 'LX' else "Zhou Zuoren"
             formatted_examples.append(
-                f"Text:\n{example['text']}\n\nResponse:\n{json_response}"
+                f"Text:\n{example['text']}\n\n"
+                f"Analysis: This text shows characteristic features of {author}'s writing...\n"
+                f"{{PREDICTION_START}}{author}{{PREDICTION_END}}"
             )
 
         return "\n\n".join(formatted_examples)
 
-    def _get_stage_instructions(self, stage: str) -> str:
-        """Get stage-specific instructions."""
-        if stage == "cot":
-            return """Focus on low-level linguistic patterns and word choices to 
-determine the likely author. Think through your analysis step by step. Consider the frequency 
-of characteristic markers, sentence patterns, and stylistic choices. Include your 
-reasoning in the 'analysis' field of your JSON response."""
-        else:  # for basic, zero-shot, and few-shot scenarios
-            return """Focus on low-level linguistic patterns and word choices to 
-determine the likely author."""
-
     def construct_prompt(self, text: str, stage: str,
                          train_data: Optional[List[Dict]] = None,
                          num_examples: int = 0) -> Dict[str, str]:
-        """Construct the full prompt with clear response format."""
+        """Construct the full prompt with new prediction format."""
         prompt_parts = [self._get_basic()]
 
         if stage in ["zero-shot", "few-shot", "cot"]:
@@ -241,13 +216,11 @@ determine the likely author."""
             prompt_parts.append("Reference Examples:")
             prompt_parts.append(self._get_examples(train_data, num_examples))
 
-        prompt_parts.append(self._get_stage_instructions(stage))
-
         prompt_parts.extend([
             "Text to Analyze:",
             text,
             "",
-            "Respond with a JSON object ONLY. Your response must include an 'author' field with EXACTLY 'Lu Xun' or 'Zhou Zuoren' as the value.",
+            "Provide your analysis and end with your prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags.",
         ])
 
         return {
@@ -257,7 +230,7 @@ determine the likely author."""
 
 
 class ModelManager:
-    """Model manager with simple JSON validation."""
+    """Modified model manager to handle new prediction format."""
 
     def __init__(self, model_name: str, temperature: float = 0.6, seed: int = 42):
         self.model_name = model_name
@@ -285,8 +258,36 @@ class ModelManager:
             {"role": "user", "content": user_msg}
         ]
 
+    def _extract_prediction(self, text: str) -> Optional[Dict[str, Any]]:
+        """Extract prediction and analysis from model output."""
+        try:
+            # find the prediction between tags
+            start_tag = "{PREDICTION_START}"
+            end_tag = "{PREDICTION_END}"
+            start_idx = text.find(start_tag)
+            end_idx = text.find(end_tag)
+
+            if start_idx == -1 or end_idx == -1:
+                return None
+
+            prediction = text[start_idx + len(start_tag):end_idx].strip()
+            analysis = text[:start_idx].strip() if start_idx > 0 else ""
+
+            # validate prediction
+            if prediction not in ["Lu Xun", "Zhou Zuoren"]:
+                return None
+
+            return {
+                "author": prediction,
+                "analysis": analysis
+            }
+
+        except Exception as e:
+            print(f"Prediction extraction error: {str(e)}")
+            return None
+
     def generate(self, prompt: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Generate a single valid response."""
+        """Generate a single response with new prediction format."""
         messages = self._format_messages(prompt["system"], prompt["user"])
 
         try:
@@ -294,8 +295,7 @@ class ModelManager:
                 response = openai.ChatCompletion.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=self.temperature,
-                    response_format={"type": "json_object"}
+                    temperature=self.temperature
                 )
                 result = response.choices[0].message.content
             else:
@@ -310,14 +310,10 @@ class ModelManager:
                 )
                 result = result[0].outputs[0].text
 
-            # print('*'*90)  # debugging
-            # print(result)  # debugging
-            # print('*' * 90)  # debugging
-
-            return AuthorshipResult.model_validate_json(result).model_dump()
+            return self._extract_prediction(result)
 
         except Exception as e:
-            print(f"generation error: {str(e)}")
+            print(f"Generation error: {str(e)}")
             return None
 
     def generate_with_retries(self, prompt: Dict[str, str], num_runs: int,
@@ -337,13 +333,12 @@ class ModelManager:
             attempts += 1
 
         success_rate = len(valid_results) / attempts if attempts > 0 else 0
-        print(f"\ngeneration statistics:")
-        print(f"success rate: {success_rate:.2%}")
-        print(f"total attempts: {attempts}")
-        print(f"valid results: {len(valid_results)}")
+        print(f"\nGeneration statistics:")
+        print(f"Success rate: {success_rate:.2%}")
+        print(f"Total attempts: {attempts}")
+        print(f"Valid results: {len(valid_results)}")
 
         return valid_results
-
 
 def create_example_json(text: str, author: str, analysis: str = "") -> str:
     """Create a valid JSON example for few-shot learning."""
