@@ -28,7 +28,7 @@ from utils import load_corpus
 def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
     """Evaluate predictions against ground truth."""
     # extract predictions and true labels
-    y_true = [doc['author'].upper() for doc in ground_truth]
+    y_true = [doc['author'] for doc in ground_truth]
     y_pred = [pred['aggregated_result']['author'] for pred in predictions]
 
     # calculate metrics
@@ -37,10 +37,10 @@ def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> D
                                                                average='weighted')
 
     # calculate confusion matrix
-    labels = ["LX", "ZZR"]
+    labels = ["Lu Xun", "Zhou Zuoren"]
     conf_matrix = confusion_matrix(y_true, y_pred, labels=labels)
 
-    # format confusion matrix as dict for JSON serialization
+    # format confusion matrix as dict for json serialization
     conf_matrix_dict = {
         'matrix': conf_matrix.tolist(),
         'labels': labels
@@ -126,8 +126,8 @@ class ExperimentLogger:
 
 class AuthorshipResult(BaseModel):
     """Schema for the authorship analysis result."""
-    author: Literal['LX', 'ZZR'] = Field(
-        description="The predicted author: must be either 'LX' (Lu Xun) or 'ZZR' (Zhou Zuoren)"
+    author: Literal['Lu Xun', 'Zhou Zuoren'] = Field(
+        description="The predicted author: must be either 'Lu Xun' or 'Zhou Zuoren'"
     )
     analysis: Optional[str] = Field(
         default=None,
@@ -143,14 +143,14 @@ class PromptManager:
 
         # base system prompt with clear response format
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
-to determine their authorship.
+        stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
+        to determine their authorship. There are two possible authors: Lu Xun and Zhou Zuoren.
 
-Required response format:
-{
-    "author": "LX" or "ZZR",  // Must be exactly one of these two values
-    "analysis": "your analysis here"  // Optional explanation
-}"""
+        Required response format:
+        {
+            "author": "Lu Xun" or "Zhou Zuoren",  // Must be exactly one of these two values
+            "analysis": "your analysis here"  // Optional explanation
+        }"""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
@@ -202,7 +202,8 @@ Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, �
     def _get_stage_instructions(self, stage: str) -> str:
         """Get stage-specific instructions."""
         if stage == "cot":
-            return """Think through your analysis step by step. Consider the frequency 
+            return """Focus on low-level linguistic patterns and word choices to 
+determine the likely author. Think through your analysis step by step. Consider the frequency 
 of characteristic markers, sentence patterns, and stylistic choices. Include your 
 reasoning in the 'analysis' field of your JSON response."""
         else:  # for basic, zero-shot, and few-shot scenarios
