@@ -243,7 +243,6 @@ class ModelManager:
                 gpu_memory_utilization=0.85,
                 tensor_parallel_size=2 if "70B" in model_name else 1,
                 enforce_eager=False,
-                max_num_batched_tokens=8192,
                 quantization="awq" if "70B" in model_name else None,
                 device="cuda",
             )
