@@ -340,6 +340,7 @@ class ModelManager:
 
         return valid_results
 
+
 def create_example_json(text: str, author: str, analysis: str = "") -> str:
     """Create a valid JSON example for few-shot learning."""
     example = AuthorshipResult(author=author, analysis=analysis)
