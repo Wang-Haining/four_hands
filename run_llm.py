@@ -142,20 +142,18 @@ class PromptManager:
 
         # base system prompt with clear response format
         self.system_msg = """You are an expert in Chinese literature, specializing in 
-        stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 
-        to determine their authorship. There are two possible authors: Lu Xun and Zhou Zuoren.
+        stylometric analysis. Your task is to analyze passages from the disputed work 
+        哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and 
+        Zhou Zuoren.
 
         Required response format:
-        {
-            "author": "Lu Xun" or "Zhou Zuoren",  // Must be exactly one of these two values
-            "analysis": "your analysis here"  // Optional explanation
-        }"""
+        {"author": "Lu Xun" or "Zhou Zuoren", "analysis": "your analysis here"}"""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
         return """Analyze the writing styles of the input texts, disregarding 
-differences in topic and content, and reason based on linguistic features 
-such as character frequency."""
+        differences in topic and content, and reason based on linguistic features 
+        such as character frequency."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
