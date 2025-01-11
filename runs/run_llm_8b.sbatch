@@ -30,7 +30,7 @@ for stage in "${STAGES[@]}"; do
             --model "$MODEL" \
             --stage "$stage" \
             --temperature "$temp" \
-            --num_runs 30 \
+            --num_runs 2 \
             --seed 42
 
         # add small delay between runs
