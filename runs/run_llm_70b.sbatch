@@ -14,7 +14,7 @@ mkdir -p logs
 . .venv/bin/activate
 
 # model configuration
-MODEL="meta-llama/Llama-3.1-70B-Instruct"
+MODEL="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
 STAGES=("basic" "zero-shot" "few-shot" "cot")
 TEMPERATURES=(0 0.6 1)
 

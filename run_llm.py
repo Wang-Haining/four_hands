@@ -134,36 +134,27 @@ class AuthorshipResult(BaseModel):
     )
 
 
-# First, let's remove the AuthorshipResult class since we no longer need Pydantic validation
-# and modify the PromptManager class to use the new format
-
 class PromptManager:
     """Enhanced prompt manager with simpler prediction format."""
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
 
-        # Updated system prompt with new format instructions
         self.system_msg = """You are an expert in Chinese literature, specializing in 
         stylometric analysis. Your task is to analyze passages from the disputed work 
         哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and 
         Zhou Zuoren.
 
-        You should analyze the text and make the prediction at the end.
-        Your final prediction must be wrapped in special tags:
-        {PREDICTION_START}Lu Xun{PREDICTION_END}
-        or
-        {PREDICTION_START}Zhou Zuoren{PREDICTION_END}
-
-        The prediction must be exactly one of these two authors, with no additional text 
+        You should analyze the text and make the prediction at the end with your 
+        prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags. The 
+        prediction must be exactly one of these two authors, with no additional text 
         within the prediction tags."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
         return """Analyze the writing styles of the input texts, disregarding 
         differences in topic and content, and reason based on linguistic features 
-        such as character frequency. End your analysis with your prediction wrapped 
-        in {PREDICTION_START} and {PREDICTION_END} tags."""
+        such as character frequency."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
@@ -196,7 +187,7 @@ Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, �
             author = "Lu Xun" if example['author'].upper() == 'LX' else "Zhou Zuoren"
             formatted_examples.append(
                 f"Text:\n{example['text']}\n\n"
-                f"Analysis: This text shows characteristic features of {author}'s writing...\n"
+                f"Analysis: ...\n"
                 f"{{PREDICTION_START}}{author}{{PREDICTION_END}}"
             )
 
@@ -247,7 +238,7 @@ class ModelManager:
                 tensor_parallel_size=2 if "70B" in model_name else 1,
                 enforce_eager=False,
                 max_num_batched_tokens=8192,
-                quantization="gptq" if "70B" in model_name else None,
+                quantization="awq" if "70B" in model_name else None,
                 device="cuda",
             )
 
