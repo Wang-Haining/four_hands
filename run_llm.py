@@ -146,8 +146,28 @@ class PromptManager:
         哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and 
         Zhou Zuoren.
 
-        Required response format:
-        {"author": "Lu Xun" or "Zhou Zuoren", "analysis": "your analysis here"}"""
+        Follow these strict rules when you respond:
+
+1. You must output a single valid JSON object **and nothing else**—no Markdown,
+   no code fences, and no plain text outside the JSON.
+2. Your JSON object must have exactly two keys:
+   {
+     "author": "Lu Xun" or "Zhou Zuoren",
+     "analysis": "Your reasoning here."
+   }
+3. Do NOT include any additional fields besides "author" and "analysis."
+4. Do NOT wrap your output in triple backticks or any other format.
+5. If you have any reasoning or explanation, place it entirely in the "analysis" field.
+6. Do not add any text before or after the JSON braces. We will parse your output 
+   with a strict JSON parser, so any extra text or formatting will cause an error.
+
+Remember:
+- "author" must be exactly one of "Lu Xun" or "Zhou Zuoren."
+- "analysis" can contain any free-form text for explanation, but must be valid 
+  JSON string content.
+- Any violation of these rules invalidates your output.
+
+Now, please follow these instructions carefully."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
