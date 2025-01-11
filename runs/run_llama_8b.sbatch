@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=llama_70b_auth
+#SBATCH --job-name=llama3.1_8b
 #SBATCH --partition=nextgen-gpu
-#SBATCH --gres=gpu:h100:2
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=256G
-#SBATCH --time=2-00:00:00
+#SBATCH --gres=gpu:h100:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=128G
+#SBATCH --time=1-00:00:00
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --mail-user=haining.wang@montana.edu
@@ -14,7 +14,7 @@ mkdir -p logs
 . .venv/bin/activate
 
 # model configuration
-MODEL="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
+MODEL="meta-llama/Llama-3.1-8B-Instruct"
 STAGES=("basic" "zero-shot" "few-shot" "cot")
 TEMPERATURES=(0 0.6 1)
 
@@ -30,7 +30,7 @@ for stage in "${STAGES[@]}"; do
             --model "$MODEL" \
             --stage "$stage" \
             --temperature "$temp" \
-            --num_runs 30 \
+            --num_runs 2 \
             --seed 42
 
         # add small delay between runs
@@ -38,4 +38,4 @@ for stage in "${STAGES[@]}"; do
     done
 done
 
-echo "70B model experiments completed!"
+echo "8B model experiments completed!"
