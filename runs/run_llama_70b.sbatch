@@ -30,7 +30,7 @@ for stage in "${STAGES[@]}"; do
             --model "$MODEL" \
             --stage "$stage" \
             --temperature "$temp" \
-            --num_runs 30 \
+            --num_runs 50 \
             --seed 42
 
         # add small delay between runs
@@ -38,4 +38,4 @@ for stage in "${STAGES[@]}"; do
     done
 done
 
-echo "70B model experiments completed!"
+echo "Meta-Llama-3.1-70B-Instruct-AWQ-INT4" experiments completed!"
