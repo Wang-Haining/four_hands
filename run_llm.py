@@ -292,9 +292,9 @@ class ModelManager:
                 )
                 result = result[0].outputs[0].text
 
-            print('*'*90)  # debugging
-            print(result)  # debugging
-            print('*' * 90)
+            # print('*'*90)  # debugging
+            # print(result)  # debugging
+            # print('*' * 90)  # debugging
 
             return AuthorshipResult.model_validate_json(result).model_dump()
 
