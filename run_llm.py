@@ -26,17 +26,23 @@ from utils import load_corpus
 
 def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
     """Evaluate predictions against ground truth."""
+    # map full names to lowercase short labels for predictions
+    name_to_code = {
+        "Lu Xun": "lx",
+        "Zhou Zuoren": "zzr"
+    }
+
     # extract predictions and true labels
     y_true = [doc['author'] for doc in ground_truth]
-    y_pred = [pred['aggregated_result']['author'] for pred in predictions]
+    y_pred = [name_to_code[pred['aggregated_result']['author']] for pred in predictions]
 
     # calculate metrics
     accuracy = accuracy_score(y_true, y_pred)
     precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred,
                                                                average='weighted')
 
-    # calculate confusion matrix
-    labels = ["Lu Xun", "Zhou Zuoren"]
+    # calculate confusion matrix with lowercase labels
+    labels = ["lx", "zzr"]
     conf_matrix = confusion_matrix(y_true, y_pred, labels=labels)
 
     # format confusion matrix as dict for json serialization
@@ -309,19 +315,26 @@ class ModelManager:
 
     def generate_with_retries(self, prompt: Dict[str, str], num_runs: int,
                               max_retries: int = 3) -> List[Dict[str, Any]]:
-        """Generate multiple responses with retry logic."""
+        """Generate multiple responses with retry logic and robust error handling."""
         valid_results = []
         attempts = 0
 
         while len(valid_results) < num_runs and attempts < num_runs * max_retries:
-            if self.is_openai:
-                openai.api_key = os.environ["OPENAI_API_KEY"]
+            try:
+                if self.is_openai:
+                    openai.api_key = os.environ["OPENAI_API_KEY"]
 
-            result = self.generate(prompt)
-            if result is not None:
-                valid_results.append(result)
+                result = self.generate(prompt)
+                if result is not None and isinstance(result,
+                                                     dict) and 'author' in result:
+                    valid_results.append(result)
 
-            attempts += 1
+                attempts += 1
+
+            except Exception as e:
+                print(f"Error during generation attempt {attempts}: {str(e)}")
+                attempts += 1
+                continue
 
         success_rate = len(valid_results) / attempts if attempts > 0 else 0
         print(f"\nGeneration statistics:")
@@ -329,6 +342,7 @@ class ModelManager:
         print(f"Total attempts: {attempts}")
         print(f"Valid results: {len(valid_results)}")
 
+        # always return a list, even if empty
         return valid_results
 
 
