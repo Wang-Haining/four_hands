@@ -38,4 +38,4 @@ for stage in "${STAGES[@]}"; do
     done
 done
 
-echo "Meta-Llama-3.1-70B-Instruct-AWQ-INT4" experiments completed!"
+echo "Meta-Llama-3.1-70B-Instruct-AWQ-INT4 experiments completed!"
