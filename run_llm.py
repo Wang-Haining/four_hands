@@ -146,28 +146,17 @@ class PromptManager:
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
 
-        self.system_msg = """You are an expert in Chinese literature, specializing in 
-        stylometric analysis. Your task is to analyze passages from the disputed work 
-        哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and 
-        Zhou Zuoren.
+        self.system_msg = """You are an expert in Chinese literature, specializing in stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and Zhou Zuoren.
 
-        You should analyze the text and make the prediction at the end with your 
-        prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags. The 
-        prediction must be exactly one of these two authors, with no additional text 
-        within the prediction tags."""
+        You should analyze the text and make the prediction at the end with your prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags. The prediction must be exactly one of these two authors, with no additional text within the prediction tags."""
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
-        return """Analyze the writing styles of the input texts, disregarding 
-        differences in topic and content, and reason based on linguistic features 
-        such as character frequency."""
+        return """Analyze the writing styles of the input texts, disregarding differences in topic and content, and reason based on linguistic features such as character frequency."""
 
     def _get_knowledge(self) -> str:
         """Return linguistic knowledge for zero-shot prompting."""
-        return """Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 
-足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫.
-
-Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随."""
+        return """Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫. Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随."""
 
     def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
         """Generate examples with new prediction format."""
