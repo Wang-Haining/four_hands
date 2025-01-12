@@ -14,6 +14,7 @@ import random
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
+from collections import defaultdict
 
 import openai
 from pydantic import BaseModel, Field
@@ -22,6 +23,44 @@ from sklearn.metrics import (accuracy_score, confusion_matrix,
 from vllm import LLM, SamplingParams
 
 from utils import load_corpus
+
+
+def rearrange_train_val_while_reserve_shots(train: list, val: list, test: list) -> \
+tuple[list, list, list, dict, dict]:
+    """
+    Rearrange train and val sets while reserving first sample of each author from training for few-shot.
+    The remaining samples will be used to create a balanced validation set.
+
+    Args:
+        train: Original training documents
+        val: Original validation documents
+        test: Original test documents (unchanged)
+
+    Returns:
+        Tuple of (new_train, new_val, test, lx_shot, zzr_shot) where shots are individual documents
+    """
+    # get first sample of each author from training
+    lx_shot = next(doc for doc in train if doc['author'] == 'lx')
+    zzr_shot = next(doc for doc in train if doc['author'] == 'zzr')
+    new_train = [lx_shot, zzr_shot]
+
+    # combine remaining training and validation documents
+    remaining_train = [doc for doc in train if doc not in new_train]
+    all_docs = remaining_train + val
+
+    # create balanced validation set using 15 docs from each author
+    lx_docs = [doc for doc in all_docs if doc['author'] == 'lx'][:15]
+    zzr_docs = [doc for doc in all_docs if doc['author'] == 'zzr'][:15]
+    new_val = lx_docs + zzr_docs
+
+    print("\nNew Split Summary:")
+    print(
+        f"Training (Few-shot): {len(new_train)} docs ({sum(1 for d in new_train if d['author'] == 'lx')} LX, {sum(1 for d in new_train if d['author'] == 'zzr')} ZZR)")
+    print(
+        f"Validation: {len(new_val)} docs ({sum(1 for d in new_val if d['author'] == 'lx')} LX, {sum(1 for d in new_val if d['author'] == 'zzr')} ZZR)")
+    print(f"Test: {len(test)} docs")
+
+    return new_train, new_val, test, lx_shot, zzr_shot
 
 
 def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> Dict:
@@ -63,6 +102,7 @@ def evaluate_predictions(predictions: List[Dict], ground_truth: List[Dict]) -> D
 
 class ExperimentLogger:
     """Handle logging of experimental results."""
+
     def __init__(self):
         self.output_dir = Path("results")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,7 +142,7 @@ class ExperimentLogger:
             "test_predictions": test_predictions
         }
 
-        # save
+        # save results
         output_file = self.output_dir / f"{experiment_id}.json"
         with output_file.open('w', encoding='utf-8') as f:
             json.dump(experiment_data, f, ensure_ascii=False, indent=2)
@@ -112,11 +152,13 @@ class ExperimentLogger:
 
     def _print_experiment_summary(self, data: Dict):
         """Print a summary of the experiment results."""
+        # print basic experiment info
         print("\nExperiment Summary:")
         print(f"Model: {data['config']['model']}")
         print(f"Stage: {data['config']['stage']}")
         print(f"Temperature: {data['config']['temperature']}")
 
+        # print validation metrics
         print("\nValidation Metrics:")
         metrics = data['validation']['metrics']
         print(f"Accuracy: {metrics['accuracy']:.3f}")
@@ -124,9 +166,35 @@ class ExperimentLogger:
         print(f"Recall: {metrics['recall']:.3f}")
         print(f"F1 Score: {metrics['f1']:.3f}")
 
+        # print class distribution
         print("\nClass Distribution:")
         for label, count in metrics['support'].items():
             print(f"{label}: {count}")
+
+        # print explanation summary if available
+        if any('explanation' in result for result in data['validation']['predictions']):
+            print("\nExplanation Summary:")
+            # collect importance scores across all documents
+            all_importance = defaultdict(list)
+            for result in data['validation']['predictions']:
+                if 'explanation' in result:
+                    for feature, importance in result['explanation'][
+                        'feature_importance'].items():
+                        all_importance[feature].append(importance)
+
+            # calculate and show average importance scores
+            print("\nAverage Feature Importance (top 10):")
+            avg_importance = {
+                feature: np.mean(scores)
+                for feature, scores in all_importance.items()
+            }
+            # sort by absolute importance and show top 10
+            for feature, importance in sorted(
+                    avg_importance.items(),
+                    key=lambda x: abs(x[1]),
+                    reverse=True
+            )[:10]:
+                print(f"{feature}: {importance:.3f}")
 
 
 class AuthorshipResult(BaseModel):
@@ -145,10 +213,22 @@ class PromptManager:
 
     def __init__(self, use_cot: bool = False):
         self.use_cot = use_cot
+        self.train = None
+        self.val = None
+        self.test = None
+        self.lx_shot = None
+        self.zzr_shot = None
 
-        self.system_msg = """You are an expert in Chinese literature, specializing in stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 to determine their authorship. There are two possible authors: Lu Xun and Zhou Zuoren.
+        self.system_msg = """You are an expert in Chinese literature, specializing in stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 to determine their authorship between Lu Xun and Zhou Zuoren.
+
+        IMPORTANT: Base your analysis STRICTLY on the stylistic markers provided. Do NOT use any authorship knowledge you may have about other works by Lu Xun or Zhou Zuoren, as this could lead to unreliable conclusions. Focus solely on analyzing the presence and patterns of the specific markers in the given text.
 
         You should analyze the text and make the prediction at the end with your prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags. The prediction must be exactly one of these two authors, with no additional text within the prediction tags."""
+
+    def setup_data(self, train: list, val: list, test: list):
+        """Setup data splits and shot samples."""
+        self.train, self.val, self.test, self.lx_shot, self.zzr_shot = rearrange_train_val_while_reserve_shots(
+            train, val, test)
 
     def _get_basic(self) -> str:
         """Return basic analysis instructions."""
@@ -158,49 +238,49 @@ class PromptManager:
         """Return linguistic knowledge for zero-shot prompting."""
         return """Features supporting Lu Xun's style include: 之, 而, 唯, 矣, 是, 于是, 足以, 必, 何, 徒, 然, 不, 乃, 于, 则, 进而, 全, 光, 夫. Features supporting Zhou Zuoren's style include: 本, 及, 别, 原, 各, 为, 多, 但, 自然, 随."""
 
-    def _get_examples(self, train_data: List[Dict], num_examples: int) -> str:
-        """Generate examples with new prediction format."""
-        # get balanced examples for both authors
-        lx_examples = [d for d in train_data if d['author'].upper() == 'LX']
-        zzr_examples = [d for d in train_data if d['author'].upper() == 'ZZR']
+    def _get_examples(self) -> str:
+        """Generate examples using the shot samples."""
+        if not (self.lx_shot and self.zzr_shot):
+            raise ValueError("Shot samples not initialized. Call setup_data first.")
 
-        examples_per_author = num_examples // 2
-        selected_lx = random.sample(lx_examples, examples_per_author)
-        selected_zzr = random.sample(zzr_examples, examples_per_author)
+        examples = []
 
-        if num_examples % 2 == 1:
-            extra_example = random.choice(random.choice([lx_examples, zzr_examples]))
-            selected_examples = selected_lx + selected_zzr + [extra_example]
-        else:
-            selected_examples = selected_lx + selected_zzr
+        # format Lu Xun example
+        examples.append(
+            f"Text:\n{self.lx_shot['text']}\n\n"
+            f"Analysis: ...\n"
+            f"{{PREDICTION_START}}Lu Xun{{PREDICTION_END}}"
+        )
 
-        random.shuffle(selected_examples)
+        # format Zhou Zuoren example
+        examples.append(
+            f"Text:\n{self.zzr_shot['text']}\n\n"
+            f"Analysis: ...\n"
+            f"{{PREDICTION_START}}Zhou Zuoren{{PREDICTION_END}}"
+        )
 
-        # format examples with new prediction format
-        formatted_examples = []
-        for example in selected_examples:
-            author = "Lu Xun" if example['author'].upper() == 'LX' else "Zhou Zuoren"
-            formatted_examples.append(
-                f"Text:\n{example['text']}\n\n"
-                f"Analysis: ...\n"
-                f"{{PREDICTION_START}}{author}{{PREDICTION_END}}"
-            )
+        return "\n\n".join(examples)
 
-        return "\n\n".join(formatted_examples)
+    def construct_prompt(self, text: str, stage: str) -> Dict[str, str]:
+        """Construct the full prompt with new prediction format.
 
-    def construct_prompt(self, text: str, stage: str,
-                         train_data: Optional[List[Dict]] = None,
-                         num_examples: int = 0) -> Dict[str, str]:
-        """Construct the full prompt with new prediction format."""
+        Args:
+            text: The text to analyze
+            stage: Analysis stage ("basic", "zero-shot", "few-shot", "cot")
+        """
+        if stage in ["few-shot", "cot"] and not (self.lx_shot and self.zzr_shot):
+            raise ValueError(
+                f"Shot samples required for {stage} stage. Call setup_data first.")
+
         prompt_parts = [self._get_basic()]
 
         if stage in ["zero-shot", "few-shot", "cot"]:
             prompt_parts.append("Linguistic Features to Consider:")
             prompt_parts.append(self._get_knowledge())
 
-        if stage in ["few-shot", "cot"] and train_data and num_examples > 0:
+        if stage in ["few-shot", "cot"]:
             prompt_parts.append("Reference Examples:")
-            prompt_parts.append(self._get_examples(train_data, num_examples))
+            prompt_parts.append(self._get_examples())
 
         prompt_parts.extend([
             "Text to Analyze:",
@@ -375,67 +455,109 @@ def compute_vote_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
 def main():
     parser = argparse.ArgumentParser(
         description="Enhanced authorship analysis using LLMs")
+    # existing arguments
     parser.add_argument("--model", default="meta-llama/Llama-3.1-8B-Instruct",
                         help="Model name (Hugging Face or OpenAI)")
     parser.add_argument("--stage", choices=["basic", "zero-shot", "few-shot", "cot"],
                         required=True, help="Analysis stage to run")
-    parser.add_argument("--num_examples", type=int, default=3,
-                        help="Number of examples (for few-shot and cot stages)")
     parser.add_argument("--num_runs", type=int, default=30,
                         help="Number of runs for voting")
     parser.add_argument("--temperature", type=float, default=0.6,
                         help="Temperature for sampling")
     parser.add_argument("--seed", type=int, default=42,
                         help="Base random seed")
+    # add explanation arguments
+    parser.add_argument("--explain", action="store_true",
+                        help="Generate LIME-like explanations")
+    parser.add_argument("--explain_samples", type=int, default=1000,
+                        help="Number of samples for explanation (if --explain)")
+    parser.add_argument("--runs_per_sample", type=int, default=3,
+                        help="Number of runs per perturbed sample (if --explain)")
     args = parser.parse_args()
 
-    # init
+    # init core components
     random.seed(args.seed)
     train, val, test = load_corpus()
     model_mgr = ModelManager(args.model, args.temperature, args.seed)
     prompt_mgr = PromptManager(use_cot=(args.stage == "cot"))
     logger = ExperimentLogger()
 
-    # first run validation set
+    # setup data splits
+    prompt_mgr.setup_data(train, val, test)
+
+    # init explainer if needed
+    explainer = None
+    if args.explain:
+        from explainer import CharacterExplainer
+        explainer = CharacterExplainer(
+            n_samples=args.explain_samples,
+            runs_per_sample=args.runs_per_sample
+        )
+
+    # process validation set
     print("\nRunning validation set evaluation...")
     val_results = []
-    for val_doc in val:
+    for val_doc in prompt_mgr.val:  # use val from prompt_mgr
         print(f"\nValidating on document: {val_doc['title']}")
         prompt = prompt_mgr.construct_prompt(
             val_doc["text"],
-            stage=args.stage,
-            train_data=train if args.stage in ["few-shot", "cot"] else None,
-            num_examples=args.num_examples if args.stage in ["few-shot", "cot"] else 0
+            stage=args.stage
         )
         run_results = model_mgr.generate_with_retries(prompt, args.num_runs)
-        val_results.append({
+
+        # prepare base result dictionary
+        result_dict = {
             'doc': val_doc,
             'results': run_results,
             'aggregated_result': compute_vote_results(run_results)
-        })
+        }
 
-    # then run test set
+        # add explanation if requested
+        if explainer:
+            print("Generating explanation...")
+            explanation = explainer.explain_prediction(
+                text=val_doc["text"],
+                model_manager=model_mgr,
+                prompt_manager=prompt_mgr,
+                stage=args.stage
+            )
+            result_dict['explanation'] = explanation
+
+        val_results.append(result_dict)
+
+    # process test set with same logic
     print("\nRunning test set prediction...")
     test_results = []
-    for test_doc in test:
+    for test_doc in prompt_mgr.test:  # use test from prompt_mgr
         print(f"\nAnalyzing document: {test_doc['title']}")
         prompt = prompt_mgr.construct_prompt(
             test_doc["text"],
-            stage=args.stage,
-            train_data=train if args.stage in ["few-shot", "cot"] else None,
-            num_examples=args.num_examples if args.stage in ["few-shot", "cot"] else 0
+            stage=args.stage
         )
         run_results = model_mgr.generate_with_retries(prompt, args.num_runs)
-        test_results.append({
+
+        result_dict = {
             'doc': test_doc,
             'results': run_results,
             'aggregated_result': compute_vote_results(run_results)
-        })
+        }
 
-    # save the single configuration results
+        if explainer:
+            print("Generating explanation...")
+            explanation = explainer.explain_prediction(
+                text=test_doc["text"],
+                model_manager=model_mgr,
+                prompt_manager=prompt_mgr,
+                stage=args.stage
+            )
+            result_dict['explanation'] = explanation
+
+        test_results.append(result_dict)
+
+    # save all results
     config = vars(args).copy()
-    # use the last prompt as example (they're all the same except for the text)
-    logger.save_experiment(config, val, test, prompt, val_results, test_results)
+    logger.save_experiment(config, prompt_mgr.val, prompt_mgr.test, prompt, val_results,
+                           test_results)
 
 
 if __name__ == "__main__":
