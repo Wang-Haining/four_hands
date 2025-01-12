@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=llama3.1_8b
+#SBATCH --job-name=gemma2_7b
 #SBATCH --partition=nextgen-gpu
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
@@ -14,7 +14,7 @@ mkdir -p logs
 . .venv/bin/activate
 
 # model configuration
-MODEL="meta-llama/Llama-3.1-8B-Instruct"
+MODEL="google/gemma-2-9b-it"
 STAGES=("basic" "zero-shot" "few-shot" "cot")
 
 # run grid search
@@ -37,4 +37,4 @@ for stage in "${STAGES[@]}"; do
     done
 done
 
-echo "Llama-3.1-8B-Instruct experiments completed!"
+echo "gemma-2-9b-it experiments completed!"
