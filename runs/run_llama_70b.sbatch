@@ -16,26 +16,22 @@ mkdir -p logs
 # model configuration
 MODEL="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
 STAGES=("basic" "zero-shot" "few-shot" "cot")
-TEMPERATURES=(0.6)
 
 # run grid search
 for stage in "${STAGES[@]}"; do
-    for temp in "${TEMPERATURES[@]}"; do
-        echo "Running experiment with:"
-        echo "Model: $MODEL"
-        echo "Stage: $stage"
-        echo "Temperature: $temp"
+    echo "Running experiment with:"
+    echo "Model: $MODEL"
+    echo "Stage: $stage"
 
-        python run_llm.py \
-            --model "$MODEL" \
-            --stage "$stage" \
-            --temperature "$temp" \
-            --num_runs 50 \
-            --seed 42
+    python run_llm.py \
+        --model "$MODEL" \
+        --stage "$stage" \
+        --temperature 0.6 \
+        --num_runs 50 \
+        --seed 42
 
-        # add small delay between runs
-        sleep 5
-    done
+    # add small delay between runs
+    sleep 5
 done
 
 echo "Meta-Llama-3.1-70B-Instruct-AWQ-INT4 experiments completed!"
