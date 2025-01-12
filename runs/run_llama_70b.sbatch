@@ -16,7 +16,7 @@ mkdir -p logs
 # model configuration
 MODEL="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
 STAGES=("basic" "zero-shot" "few-shot" "cot")
-TEMPERATURES=(0 0.6 1)
+TEMPERATURES=(0.6)
 
 # run grid search
 for stage in "${STAGES[@]}"; do
