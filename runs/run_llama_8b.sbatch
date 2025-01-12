@@ -10,11 +10,8 @@
 #SBATCH --mail-user=haining.wang@montana.edu
 #SBATCH --mail-type=ALL
 
-# Create logs directory
 mkdir -p logs
-
-# Activate virtual environment
-source .venv/bin/activate
+. .venv/bin/activate
 
 # model configuration
 MODEL="meta-llama/Llama-3.1-8B-Instruct"
