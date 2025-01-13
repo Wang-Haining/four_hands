@@ -221,8 +221,6 @@ class PromptManager:
 
         self.system_msg = """You are an expert in Chinese literature, specializing in stylometric analysis. Your task is to analyze passages from the disputed work 哀弦篇 to determine their authorship between Lu Xun and Zhou Zuoren.
 
-        IMPORTANT: Base your analysis STRICTLY on the stylistic markers provided. Do NOT use any authorship knowledge you may have about other works by Lu Xun or Zhou Zuoren, as this could lead to unreliable conclusions. Focus solely on analyzing the presence and patterns of the specific markers in the given text.
-
         You should analyze the text and make the prediction at the end with your prediction wrapped in {PREDICTION_START} and {PREDICTION_END} tags. The prediction must be exactly one of these two authors, with no additional text within the prediction tags."""
 
     def setup_data(self, train: list, val: list, test: list):
