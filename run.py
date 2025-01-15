@@ -16,7 +16,7 @@ __license__ = "0BSD"
 import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
@@ -86,8 +86,11 @@ pipline.fit(X_train, y_train)
 # validation
 print(
     f"The validation accuracy is "
-    f"{round(accuracy_score(y_val, pipline.predict(X_val)), 3)}.\n"
+    f"{round(accuracy_score(y_val, pipline.predict(X_val)), 3)}."
 )
+val_predictions = pipline.predict(X_val)
+f1 = f1_score(y_val, val_predictions)
+print(f"The F1 score on validation set is {round(f1, 3)}.\n")
 
 # prediction
 for prediction, title in zip(pipline.predict_proba(X_test), [d["title"] for d in test]):
