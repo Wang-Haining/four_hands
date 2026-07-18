@@ -3,12 +3,12 @@
 [![en](https://img.shields.io/badge/lang-en-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.md)
 [![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.zh.md)
 
-本仓库收录了论文《四手联弹：周作人与鲁迅在〈哀弦篇〉中的合作研究》的语料库与复现代码。
+本仓库收录了论文《四手联弹：〈哀弦篇〉著者考》的语料库与复现代码。
 
 我们发现证据表明，传统上被认为仅由周作人独立创作的《哀弦篇》，很可能是与鲁迅合作完成的作品：
-- 第五段最有可能是周作人独立创作。
-- 第一段极有可能是鲁迅独立创作。
-- 其余段落展现出强烈的文风融合特征，表明兄弟二人进行了密切合作。
+- 第一节极有可能是鲁迅独立创作。
+- 第二至四节与第六节展现出两人风格的深度交融，表明兄弟二人进行了密切合作。
+- 第五节判别特征密度过低、超出模型验证范围，我们不对其作者归属下判断。
 
 详细内容请参阅我们的[论文](#citation)。
 

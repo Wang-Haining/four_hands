@@ -3,15 +3,15 @@
 [![en](https://img.shields.io/badge/lang-en-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.md)
 [![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.zh.md)
 
-This repository hosts the corpus and scripts for reproducing the findings of *Four Hands Playing in Unison: A Study
-on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'*.
+This repository hosts the corpus and scripts for reproducing the findings of *Four Hands Playing in Unison:
+On the Authorship of 'The Strings of Melancholy'*.
 
 We found evidence suggesting that *The Strings of Melancholy*, conventionally attributed solely to Zhou Zuoren, was
 likely a collaborative work with Lu Xun:
 
-- Passage 5 is most likely Zhou Zuoren's solo work.
 - Passage 1 is highly likely to have been written solely by Lu Xun.
-- The remaining passages display a strong blend of styles, suggesting close collaboration between the brothers.
+- Passages 2–4 and 6 display a strong blend of styles, suggesting close collaboration between the brothers.
+- Passage 5 shows too low a density of discriminative features for a reliable call (outside the model's validated range), so we refrain from attributing it.
 
 Please refer to our [manuscript](#citation) for details.
 
