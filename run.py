@@ -9,29 +9,27 @@ The code is mostly inherited from our previous repository
 https://github.com/Wang-Haining/the_many_voices
 """
 
-__author__ = "hw56@indiana.edu"
-__version__ = "0.0.1"
+__author__ = "hw56@iu.edu"
+__version__ = "0.0.2"
 __license__ = "0BSD"
 
 import numpy as np
 import pandas as pd
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score, f1_score
-from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
-from utils import load_corpus, count_frequency, highlight_document
+from utils import count_frequency, highlight_document, load_corpus
 
 print("*" * 99)
-print(
-    """Reproducing the findings of Four Hands Playing in Unison: A Study
-on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'"""
-)
+print("""Reproducing the findings of Four Hands Playing in Unison: A Study
+on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'""")
 
 # load data
 train, val, test = load_corpus()
 # sort test samples based on the title field
-test.sort(key=lambda d: d['title'])
+test.sort(key=lambda d: d["title"])
 # specify 31 features derived from recursive feature elimination
 # including 4 bigrams and 27 unigrams
 # fmt: off
@@ -41,15 +39,19 @@ character_ngrams = ['诚', '于', '乃', '光', '原', '各', '必', '惟', '不
 # fmt: on
 
 # feature stats
-total_len = sum([d["text_length"] for d in train])
+# n.b.: each author's counts are normalized by that author's own corpus length;
+# dividing by the combined training length (as in versions <= 0.0.1) deflates
+# both rates and turns the LX/ZZR comparison into a raw-count ratio
+lx_len = sum(d["text_length"] for d in train if d["author"] == "lx")
+zzr_len = sum(d["text_length"] for d in train if d["author"] == "zzr")
 lx_freq_per_thousand = [
-    (f / total_len) * 1000
+    (f / lx_len) * 1000
     for f in count_frequency(
         character_ngrams, "".join([d["text"] for d in train if d["author"] == "lx"])
     )
 ]
 zzr_freq_per_thousand = [
-    (f / total_len) * 1000
+    (f / zzr_len) * 1000
     for f in count_frequency(
         character_ngrams, "".join([d["text"] for d in train if d["author"] == "zzr"])
     )

@@ -1,19 +1,19 @@
 # Four Hands Playing in Unison
 
-[![en](https://img.shields.io/badge/lang-en-green.svg)](https://codeberg.org/hainingwang/four_hands/src/branch/main/README.md)
-[![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://codeberg.org/hainingwang/four_hands/src/branch/main/README.zh.md)
+[![en](https://img.shields.io/badge/lang-en-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.md)
+[![zh](https://img.shields.io/badge/lang-zh-green.svg)](https://github.com/Wang-Haining/four_hands/blob/main/README.zh.md)
 
-This repository hosts the corpus and scripts for reproducing the findings of *Four Hands Playing in Unison: A Study 
+This repository hosts the corpus and scripts for reproducing the findings of *Four Hands Playing in Unison: A Study
 on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'*.
 
-We found evidence suggesting that *The Strings of Melancholy*, conventionally attributed solely to Zhou Zuoren, was 
+We found evidence suggesting that *The Strings of Melancholy*, conventionally attributed solely to Zhou Zuoren, was
 likely a collaborative work with Lu Xun:
 
 - Passage 5 is most likely Zhou Zuoren's solo work.
 - Passage 1 is highly likely to have been written solely by Lu Xun.
 - The remaining passages display a strong blend of styles, suggesting close collaboration between the brothers.
 
-not written solely by Zhou Zuoren. Please refer to our [manuscript](#citation) for details.
+Please refer to our [manuscript](#citation) for details.
 
 <img src="assets/axp.jpg" width="30%">
 
@@ -45,8 +45,8 @@ python -m run
 |            | An Addendum to Yisi Diary (乙巳日记附记一则)              | Zhou Zuoren          |
 |            | A Glimpse of Jiangnan Examinees (江南考先生之一斑)        | Zhou Zuoren          |
 |            | Plight and Broil in a Steamboat (汽船之窘况及苦热)        | Zhou Zuoren          |
-|            | Looking at the Land of Yue (望越篇)                  | Zhou Zuoren & Lu Xun |
-| Test       | The Strings of Melancholy (哀弦篇; as a whole)       | Du Ying              |
+| Test       | Looking at the Land of Yue (望越篇; known collaboration, reference point) | Zhou Zuoren & Lu Xun |
+|            | The Strings of Melancholy (哀弦篇; as a whole)       | Du Ying              |
 |            | Passage 1, The Strings of Melancholy (哀弦篇)        | Du Ying              |
 |            | Passage 2, The Strings of Melancholy (哀弦篇)        | Du Ying              |
 |            | Passage 3, The Strings of Melancholy (哀弦篇)        | Du Ying              |
@@ -59,14 +59,14 @@ python -m run
 
 <img src="assets/哀弦篇_01.jpg" width="70%">
 
-Consider Passage 1 of *The Strings of Melancholy* as an example. Characters in reddish hues indicate features 
-that favor Lu Xun as the author, while gray characters suggest Zhou Zuoren's authorship. The darker the shade, the 
-greater the absolute value of the weights associated with each feature. Notably, features favoring Lu Xun are dispersed 
-throughout. In fact, the first section of *The Strings of Melancholy* is predicted to have been authored by Lu Xun with 
-a probability of 0.976. 
+Consider Passage 1 of *The Strings of Melancholy* as an example. Characters in reddish hues indicate features
+that favor Lu Xun as the author, while gray characters suggest Zhou Zuoren's authorship. The darker the shade, the
+greater the absolute value of the weights associated with each feature. Notably, features favoring Lu Xun are dispersed
+throughout. In fact, the first section of *The Strings of Melancholy* is predicted to have been authored by Lu Xun with
+a probability of 0.976.
 
-Check more visualization at folder 
-[visualization](https://codeberg.org/hainingwang/four_hands/src/branch/main/visualization).
+Check more visualization at folder
+[visualization](https://github.com/Wang-Haining/four_hands/tree/main/visualization).
 
 ## License
 
@@ -78,8 +78,8 @@ TODO
 
 
 ## Contact
-- [rwxiexin@shnu.edu.cn](mailto:rwxiexin@shnu.edu.cn) for general questions. 
-- [hw56@indiana.edu](mailto:hw56@indiana.edu) for reproduction.
+- [rwxiexin@shnu.edu.cn](mailto:rwxiexin@shnu.edu.cn) for general questions.
+- [hw56@iu.edu](mailto:hw56@iu.edu) for reproduction.
 
 ## Acknowledgements
 

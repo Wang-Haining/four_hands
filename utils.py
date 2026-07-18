@@ -4,14 +4,15 @@ Writings of Lu Xun and Zhou Zuoren*. It contains helper function for data loadin
 cleaning, feature engineering, and visualization.
 """
 
-__author__ = "hw56@indiana.edu"
+__author__ = "hw56@iu.edu"
 __version__ = "0.1.0"
 __license__ = "0BSD"
 
 import os
 import re
-import matplotlib as mpl
 from typing import Dict, List, Tuple, Union
+
+import matplotlib as mpl
 
 
 def load_corpus(
@@ -42,9 +43,11 @@ def load_corpus(
                         "author": "lx" if "lx" in f.name else "zzr",
                         "label": 1 if "lx" in f.name else 0,
                         "text": open(f, "r").read(),
-                        "title": f.name.split("train_lx_")[1][:-4]
-                        if "lx" in f.name
-                        else f.name.split("train_zzr_")[1][:-4],
+                        "title": (
+                            f.name.split("train_lx_")[1][:-4]
+                            if "lx" in f.name
+                            else f.name.split("train_zzr_")[1][:-4]
+                        ),
                     }
                 )
             elif f.name.startswith("val"):
@@ -53,9 +56,11 @@ def load_corpus(
                         "author": "lx" if "lx" in f.name else "zzr",
                         "label": 1 if "lx" in f.name else 0,
                         "text": open(f, "r").read(),
-                        "title": f.name.split("val_lx_")[1][:-4]
-                        if "lx" in f.name
-                        else f.name.split("val_zzr_")[1][:-4],
+                        "title": (
+                            f.name.split("val_lx_")[1][:-4]
+                            if "lx" in f.name
+                            else f.name.split("val_zzr_")[1][:-4]
+                        ),
                     }
                 )
             elif f.name.startswith("test"):
