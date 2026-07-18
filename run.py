@@ -1,6 +1,6 @@
 """
-This module reproduces the findings of our paper, *Four Hands Playing in Unison: A Study
-on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'*.
+This module reproduces the findings of our paper, *Four Hands Playing in
+Unison: On the Authorship of 'The Strings of Melancholy'*.
 Specifically, it outputs predictions of authorship for the text of 'The Strings of
 Melancholy' (哀弦篇) as a whole and for each of its six sections. It also provides
 feature weights and the relative frequency per thousand characters for each author.
@@ -23,8 +23,8 @@ from sklearn.preprocessing import StandardScaler
 from utils import count_frequency, highlight_document, load_corpus
 
 print("*" * 99)
-print("""Reproducing the findings of Four Hands Playing in Unison: A Study
-on Zhou Zuoren's Collaboration with Lu Xun in 'The Strings of Melancholy'""")
+print("""Reproducing the findings of Four Hands Playing in Unison:
+On the Authorship of 'The Strings of Melancholy'""")
 
 # load data
 train, val, test = load_corpus()
